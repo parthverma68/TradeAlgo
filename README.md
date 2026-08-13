@@ -57,6 +57,11 @@ launch in two different ways:
   every push entry point degrades to a no-op whether the module is missing, unlinked,
   or present-but-uninitialised. `index.js` no longer touches `messaging()` at module
   scope, which previously threw during bundle evaluation.
+- **`index.js` registers the app component before anything optional runs**, and pulls
+  `src/App` in from the component factory rather than a top-level import. A throw
+  anywhere in the import graph used to mean `registerComponent` never ran, producing
+  `Invariant Violation: "PreMarketIQ" has not been registered` — which points at Metro
+  and hides the real error. `src/__tests__/entrypoint.test.ts` pins this down.
 
 Point it at Spring Boot by setting `USE_MOCK=false` in `.env.development` and rebuilding.
 
@@ -204,7 +209,7 @@ Stated plainly rather than left to discover:
 - **No crash reporting** — approach described in doc 02, not installed.
 - **Fonts not bundled** — add IBM Plex `.ttf` files or drop `fontFamily` from `theme.ts`.
 - **Charts are custom SVG**, deliberately lightweight. TradingView is a Phase 2 decision.
-- **Test coverage is partial** — 41 tests cover the fixture engine, the portfolio
+- **Test coverage is partial** — 44 tests cover the fixture engine, the portfolio
   reducer, the chart/card components, app startup (including the unconfigured-Firebase
   path) and the welcome → sign-in → market → buy walkthrough. `useLiveVerdict`'s merge
   rule is still uncovered.
