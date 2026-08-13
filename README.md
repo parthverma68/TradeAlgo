@@ -42,9 +42,21 @@ Sign in with any email and password.
 **Firebase and the native splash are optional.** Until you complete docs/07 steps 5
 and 6 (`google-services.json` / `GoogleService-Info.plist`, the Google Services Gradle
 plugin, `generate-bootsplash`), push alerts are simply off and the app logs a warning —
-it still launches. It did not always: `index.js` used to call `messaging()` during module
-evaluation, which threw `No Firebase App '[DEFAULT]' has been created` on any build
-without Firebase configured and killed the app before the first frame.
+it still launches.
+
+Two things make that true, because an unconfigured Firebase used to kill the app on
+launch in two different ways:
+
+- **`react-native.config.js` links the Firebase native modules only when a config file
+  is present.** Without one, the Google Services plugin never generates the config
+  resources, and the native module throws `Default FirebaseApp is not initialized in
+  this process` during startup — before any JavaScript runs, so no JS guard can catch
+  it. Drop `google-services.json` into `android/app/` (or the plist into
+  `ios/PreMarketIQ/`) and linking resumes automatically on the next build.
+- **`src/services/notifications.ts` requires the module lazily behind a guard**, so
+  every push entry point degrades to a no-op whether the module is missing, unlinked,
+  or present-but-uninitialised. `index.js` no longer touches `messaging()` at module
+  scope, which previously threw during bundle evaluation.
 
 Point it at Spring Boot by setting `USE_MOCK=false` in `.env.development` and rebuilding.
 
@@ -192,7 +204,7 @@ Stated plainly rather than left to discover:
 - **No crash reporting** — approach described in doc 02, not installed.
 - **Fonts not bundled** — add IBM Plex `.ttf` files or drop `fontFamily` from `theme.ts`.
 - **Charts are custom SVG**, deliberately lightweight. TradingView is a Phase 2 decision.
-- **Test coverage is partial** — 40 tests cover the fixture engine, the portfolio
+- **Test coverage is partial** — 41 tests cover the fixture engine, the portfolio
   reducer, the chart/card components, app startup (including the unconfigured-Firebase
   path) and the welcome → sign-in → market → buy walkthrough. `useLiveVerdict`'s merge
   rule is still uncovered.

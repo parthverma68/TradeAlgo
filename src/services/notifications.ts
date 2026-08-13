@@ -11,29 +11,53 @@
  * throwing: an app with no alerts still beats an app that will not launch.
  */
 import { Platform, PermissionsAndroid } from 'react-native';
-import messaging, {
-  FirebaseMessagingTypes,
-} from '@react-native-firebase/messaging';
+import type { FirebaseMessagingTypes } from '@react-native-firebase/messaging';
 import notifee, { AndroidImportance, EventType } from '@notifee/react-native';
 
 const CHANNEL_ID = 'market-alerts';
 const noop = () => {};
 
+type MessagingModule = typeof import('@react-native-firebase/messaging').default;
+
 let warned = false;
+let cachedModule: MessagingModule | null | undefined;
+
+function warnOnce(e: unknown) {
+  if (warned) return;
+  warned = true;
+  console.warn(
+    '[push] Firebase is not configured for this build — push alerts are off. ' +
+      'See docs/07-NATIVE-SETUP.md step 6.',
+    e,
+  );
+}
+
+/**
+ * The messaging module, required lazily. When Firebase is unconfigured the
+ * native module is not linked at all (see react-native.config.js), so even the
+ * import can fail — hence require() inside the try rather than a top-level
+ * import.
+ */
+function messagingModule(): MessagingModule | null {
+  if (cachedModule !== undefined) return cachedModule;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+    cachedModule = require('@react-native-firebase/messaging').default as MessagingModule;
+  } catch (e) {
+    warnOnce(e);
+    cachedModule = null;
+  }
+  return cachedModule;
+}
 
 /** The messaging instance, or null when Firebase is not configured natively. */
 function fcm(): FirebaseMessagingTypes.Module | null {
+  const mod = messagingModule();
+  if (!mod) return null;
   try {
-    return messaging();
+    return mod();
   } catch (e) {
-    if (!warned) {
-      warned = true;
-      console.warn(
-        '[push] Firebase is not configured for this build — push alerts are off. ' +
-          'See docs/07-NATIVE-SETUP.md step 6.',
-        e,
-      );
-    }
+    warnOnce(e);
     return null;
   }
 }
@@ -68,9 +92,9 @@ export async function requestPushToken(): Promise<string | null> {
       if (granted !== PermissionsAndroid.RESULTS.GRANTED) return null;
     } else {
       const status = await m.requestPermission();
+      const authorized = messagingModule()?.AuthorizationStatus;
       const ok =
-        status === messaging.AuthorizationStatus.AUTHORIZED ||
-        status === messaging.AuthorizationStatus.PROVISIONAL;
+        status === authorized?.AUTHORIZED || status === authorized?.PROVISIONAL;
       if (!ok) return null;
     }
 

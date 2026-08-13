@@ -89,6 +89,20 @@ describe('push service without Firebase', () => {
     expect(isPushAvailable()).toBe(false);
   });
 
+  it('survives the messaging module being unlinked entirely', () => {
+    jest.isolateModules(() => {
+      jest.doMock('@react-native-firebase/messaging', () => {
+        throw new Error(
+          "You attempted to use a firebase module that's not installed natively",
+        );
+      });
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const push = require('@/services/notifications');
+      expect(push.isPushAvailable()).toBe(false);
+      expect(() => push.registerBackgroundMessageHandler(async () => {})).not.toThrow();
+    });
+  });
+
   it('degrades every entry point to a no-op', async () => {
     await expect(requestPushToken()).resolves.toBeNull();
     await expect(deletePushToken()).resolves.toBeUndefined();
