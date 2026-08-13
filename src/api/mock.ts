@@ -4,7 +4,9 @@
  */
 import type {
   PreOpen, OptionChain, FuturesSnapshot, GlobalQuote, Sector, NewsItem, AlertItem,
+  ChartRange, OrderSide,
 } from '@/types';
+import { mockDetail, mockOrder, mockQuotes } from './mockStocks';
 
 const chainRows = (base: number, step: number, n: number) =>
   Array.from({ length: n }, (_, i) => {
@@ -109,11 +111,34 @@ export const MOCK_ALERTS: AlertItem[] = [
   { id: 'a3', type: 'gap_up', symbol: 'NIFTY', message: 'Gap-up probability crossed 55%', createdAt: new Date(Date.now() - 54e5).toISOString(), read: true },
 ];
 
-/** Resolve a mock payload for a given endpoint path. */
-export function resolveMock(url: string): unknown {
+const VALID_RANGES: ChartRange[] = ['24hr', 'week', 'month', 'year'];
+
+/**
+ * Resolve a mock payload for a given endpoint call.
+ * Returns `null` for anything unmapped so the caller can surface an honest
+ * "no mock for this route" error instead of inventing a response.
+ */
+export function resolveMock(url: string, method = 'GET', body?: unknown): unknown {
   const [path, qs] = url.split('?');
   const params = new URLSearchParams(qs ?? '');
   const symbol = params.get('symbol') ?? 'NIFTY';
+
+  /* ---- consumer trading surface -------------------------------------- */
+  if (path === '/stocks') return mockQuotes();
+  if (path.startsWith('/stocks/')) {
+    const s = path.slice('/stocks/'.length).toUpperCase();
+    const raw = params.get('range') as ChartRange | null;
+    const range = raw && VALID_RANGES.includes(raw) ? raw : '24hr';
+    return mockDetail(s, range);   // null for an unknown symbol -> 404-ish error
+  }
+  if (path === '/orders' && method === 'POST') {
+    const o = (body ?? {}) as { symbol?: string; side?: OrderSide; qty?: number };
+    return mockOrder({
+      symbol: (o.symbol ?? '').toUpperCase(),
+      side: o.side === 'SELL' ? 'SELL' : 'BUY',
+      qty: Number(o.qty ?? 0),
+    });
+  }
 
   if (path.startsWith('/market/preopen')) return MOCK_PREOPEN[symbol] ?? MOCK_PREOPEN.NIFTY;
   if (path.startsWith('/market/sentiment')) return (MOCK_PREOPEN[symbol] ?? MOCK_PREOPEN.NIFTY).verdict;

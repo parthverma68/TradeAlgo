@@ -2,13 +2,13 @@ import { createApi } from '@reduxjs/toolkit/query/react';
 import { baseQuery } from './client';
 import type {
   PreOpen, OptionChain, FuturesSnapshot, GlobalQuote, Sector,
-  NewsItem, AlertItem, User,
+  NewsItem, AlertItem, User, StockQuote, StockDetail, ChartRange, Order, OrderSide,
 } from '@/types';
 
 export const marketApi = createApi({
   reducerPath: 'marketApi',
   baseQuery,
-  tagTypes: ['PreOpen', 'Chain', 'Alerts', 'Watchlist'],
+  tagTypes: ['PreOpen', 'Chain', 'Alerts', 'Watchlist', 'Stocks'],
   // Verdicts refresh on a schedule server-side; keep client cache short.
   keepUnusedDataFor: 120,
   endpoints: (b) => ({
@@ -63,6 +63,20 @@ export const marketApi = createApi({
       query: (id) => ({ url: `/alerts/${id}/ack`, method: 'POST' }),
       invalidatesTags: ['Alerts'],
     }),
+
+    /* ---- consumer trading surface -------------------------------------- */
+    getStocks: b.query<StockQuote[], void>({
+      query: () => '/stocks',
+      providesTags: ['Stocks'],
+    }),
+    getStock: b.query<StockDetail, { symbol: string; range: ChartRange }>({
+      query: ({ symbol, range }) => `/stocks/${symbol}?range=${range}`,
+      providesTags: (_r, _e, a) => [{ type: 'Stocks', id: a.symbol }],
+    }),
+    placeOrder: b.mutation<Order, { symbol: string; side: OrderSide; qty: number }>({
+      query: (body) => ({ url: '/orders', method: 'POST', body }),
+      invalidatesTags: ['Stocks'],
+    }),
   }),
 });
 
@@ -72,4 +86,5 @@ export const {
   useGetAlertsQuery, useGetWatchlistQuery, useAddToWatchlistMutation,
   useRemoveFromWatchlistMutation, useLoginMutation, useRegisterMutation,
   useRegisterDeviceMutation, useAckAlertMutation,
+  useGetStocksQuery, useGetStockQuery, usePlaceOrderMutation,
 } = marketApi;

@@ -34,7 +34,7 @@ export default function SettingsScreen() {
           <Text style={s.label}>Push alerts</Text>
           <Switch
             value={notificationsEnabled}
-            onValueChange={(v) => dispatch(notificationsToggled(v))}
+            onValueChange={(v) => { dispatch(notificationsToggled(v)); }}
             trackColor={{ true: colors.blue, false: colors.border }}
           />
         </View>
@@ -44,7 +44,7 @@ export default function SettingsScreen() {
             <Text style={s.label}>{k.replace('_', ' ')}</Text>
             <Switch
               value={on}
-              onValueChange={() => dispatch(alertTypeToggled(k))}
+              onValueChange={() => { dispatch(alertTypeToggled(k)); }}
               trackColor={{ true: colors.blue, false: colors.border }}
             />
           </View>

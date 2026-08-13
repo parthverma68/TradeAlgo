@@ -44,6 +44,7 @@
     "@react-native/eslint-config": "0.74.85",
     "@react-native/metro-config": "0.74.85",
     "@react-native/typescript-config": "0.74.85",
+    "@types/jest": "^29.5.14",
     "@types/react": "^18.2.6",
     "@types/react-test-renderer": "^18.0.0",
     "babel-plugin-module-resolver": "^5.0.2",
@@ -57,6 +58,9 @@
     "node": ">=18"
   },
   "jest": {
-    "preset": "react-native"
+    "preset": "react-native",
+    "transformIgnorePatterns": [
+      "node_modules/(?!(@react-native|react-native|@reduxjs/toolkit|immer|redux|reselect)/)"
+    ]
   }
 }
