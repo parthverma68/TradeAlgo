@@ -2,13 +2,13 @@ import { createApi } from '@reduxjs/toolkit/query/react';
 import { baseQuery } from './client';
 import type {
   PreOpen, OptionChain, FuturesSnapshot, GlobalQuote, Sector,
-  NewsItem, AlertItem, User, StockQuote, StockDetail, ChartRange, Order, OrderSide,
+  NewsItem, AlertItem, User, StockQuote, StockDetail, StockConfidence, ChartRange,
 } from '@/types';
 
 export const marketApi = createApi({
   reducerPath: 'marketApi',
   baseQuery,
-  tagTypes: ['PreOpen', 'Chain', 'Alerts', 'Watchlist', 'Stocks'],
+  tagTypes: ['PreOpen', 'Chain', 'Alerts', 'Watchlist', 'Stocks', 'Confidence'],
   // Verdicts refresh on a schedule server-side; keep client cache short.
   keepUnusedDataFor: 120,
   endpoints: (b) => ({
@@ -64,7 +64,7 @@ export const marketApi = createApi({
       invalidatesTags: ['Alerts'],
     }),
 
-    /* ---- consumer trading surface -------------------------------------- */
+    /* ---- consumer confidence surface ------------------------------------ */
     getStocks: b.query<StockQuote[], void>({
       query: () => '/stocks',
       providesTags: ['Stocks'],
@@ -73,9 +73,9 @@ export const marketApi = createApi({
       query: ({ symbol, range }) => `/stocks/${symbol}?range=${range}`,
       providesTags: (_r, _e, a) => [{ type: 'Stocks', id: a.symbol }],
     }),
-    placeOrder: b.mutation<Order, { symbol: string; side: OrderSide; qty: number }>({
-      query: (body) => ({ url: '/orders', method: 'POST', body }),
-      invalidatesTags: ['Stocks'],
+    getConfidence: b.query<StockConfidence, string>({
+      query: (symbol) => `/stocks/${symbol}/confidence`,
+      providesTags: (_r, _e, s) => [{ type: 'Confidence', id: s }],
     }),
   }),
 });
@@ -86,5 +86,5 @@ export const {
   useGetAlertsQuery, useGetWatchlistQuery, useAddToWatchlistMutation,
   useRemoveFromWatchlistMutation, useLoginMutation, useRegisterMutation,
   useRegisterDeviceMutation, useAckAlertMutation,
-  useGetStocksQuery, useGetStockQuery, usePlaceOrderMutation,
+  useGetStocksQuery, useGetStockQuery, useGetConfidenceQuery,
 } = marketApi;

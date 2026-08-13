@@ -66,14 +66,6 @@ export const ChartIcon: React.FC<IconProps> = p => (
   </Base>
 );
 
-export const BriefcaseIcon: React.FC<IconProps> = p => (
-  <Base {...p}>
-    <Rect x="3.2" y="7.4" width="17.6" height="12.2" rx="2.8" />
-    <Path d="M9 7.4V6.2A2 2 0 0 1 11 4.2h2a2 2 0 0 1 2 2v1.2" />
-    <Path d="M3.2 12.6h17.6" />
-  </Base>
-);
-
 export const UserIcon: React.FC<IconProps> = p => (
   <Base {...p}>
     <Circle cx="12" cy="8.4" r="3.9" />
@@ -91,6 +83,24 @@ export const CloseIcon: React.FC<IconProps> = p => (
 
 export const ChevronRight: React.FC<IconProps> = p => (
   <Base {...p}><Path d="m9 5 7 7-7 7" /></Base>
+);
+
+export const LockIcon: React.FC<IconProps> = p => (
+  <Base {...p}>
+    <Rect x="5" y="10.6" width="14" height="10" rx="2.4" />
+    <Path d="M8 10.6V7.8a4 4 0 0 1 8 0v2.8" />
+  </Base>
+);
+
+export const BookmarkIcon: React.FC<IconProps> = p => (
+  <Base {...p}><Path d="M6 3.6h12v16.8l-6-4.4-6 4.4V3.6Z" /></Base>
+);
+
+/** Solid variant used inside the active tab pill. */
+export const BookmarkIconSolid: React.FC<IconProps> = ({ size = 22, color = '#fff' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+    <Path d="M6 3.6h12v16.8l-6-4.4-6 4.4V3.6Z" />
+  </Svg>
 );
 
 /** The seated-investor illustration on the onboarding screen. */

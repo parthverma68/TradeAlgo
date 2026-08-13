@@ -4,9 +4,9 @@
  */
 import type {
   PreOpen, OptionChain, FuturesSnapshot, GlobalQuote, Sector, NewsItem, AlertItem,
-  ChartRange, OrderSide,
+  ChartRange,
 } from '@/types';
-import { mockDetail, mockOrder, mockQuotes } from './mockStocks';
+import { mockConfidence, mockDetail, mockQuotes } from './mockStocks';
 
 const chainRows = (base: number, step: number, n: number) =>
   Array.from({ length: n }, (_, i) => {
@@ -123,21 +123,17 @@ export function resolveMock(url: string, method = 'GET', body?: unknown): unknow
   const params = new URLSearchParams(qs ?? '');
   const symbol = params.get('symbol') ?? 'NIFTY';
 
-  /* ---- consumer trading surface -------------------------------------- */
+  /* ---- consumer confidence surface ------------------------------------ */
   if (path === '/stocks') return mockQuotes();
+  if (path.endsWith('/confidence')) {
+    const s = path.slice('/stocks/'.length, -'/confidence'.length).toUpperCase();
+    return mockConfidence(s);   // null for an unknown symbol -> 404-ish error
+  }
   if (path.startsWith('/stocks/')) {
     const s = path.slice('/stocks/'.length).toUpperCase();
     const raw = params.get('range') as ChartRange | null;
     const range = raw && VALID_RANGES.includes(raw) ? raw : '24hr';
     return mockDetail(s, range);   // null for an unknown symbol -> 404-ish error
-  }
-  if (path === '/orders' && method === 'POST') {
-    const o = (body ?? {}) as { symbol?: string; side?: OrderSide; qty?: number };
-    return mockOrder({
-      symbol: (o.symbol ?? '').toUpperCase(),
-      side: o.side === 'SELL' ? 'SELL' : 'BUY',
-      qty: Number(o.qty ?? 0),
-    });
   }
 
   if (path.startsWith('/market/preopen')) return MOCK_PREOPEN[symbol] ?? MOCK_PREOPEN.NIFTY;
@@ -154,7 +150,7 @@ export function resolveMock(url: string, method = 'GET', body?: unknown): unknow
   if (path.startsWith('/sector/strength')) return MOCK_SECTORS;
   if (path.startsWith('/news/sentiment')) return MOCK_NEWS;
   if (path.startsWith('/alerts')) return MOCK_ALERTS;
-  if (path.startsWith('/watchlist')) return ['NIFTY', 'BANKNIFTY'];
+  if (path.startsWith('/watchlist')) return ['TCS', 'RELIANCE'];
   if (path.startsWith('/auth/')) return { token: 'mock.jwt.token', user: { id: 'u1', email: 'demo@premarketiq.app' } };
   return null;
 }

@@ -1,4 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import type { PlanKey } from '@/types';
 
 interface SettingsState {
   activeSymbol: string;
@@ -7,6 +8,8 @@ interface SettingsState {
   alertTypes: Record<string, boolean>;
   /** False until the welcome screen has been dismissed once. */
   onboarded: boolean;
+  /** Local mock of the paid plan — gates premium indicator groups and alerts. */
+  plan: PlanKey;
 }
 const initialState: SettingsState = {
   activeSymbol: 'NIFTY',
@@ -14,6 +17,7 @@ const initialState: SettingsState = {
   notificationsEnabled: true,
   alertTypes: { iv_spike: true, unusual_oi: true, gap_up: true, reversal: false },
   onboarded: false,
+  plan: 'free',
 };
 
 const slice = createSlice({
@@ -27,11 +31,12 @@ const slice = createSlice({
     },
     onboardingHydrated: (s, a: PayloadAction<boolean>) => { s.onboarded = a.payload; },
     onboardingCompleted: (s) => { s.onboarded = true; },
+    planChanged: (s, a: PayloadAction<PlanKey>) => { s.plan = a.payload; },
   },
 });
 
 export const {
   symbolSelected, notificationsToggled, alertTypeToggled,
-  onboardingHydrated, onboardingCompleted,
+  onboardingHydrated, onboardingCompleted, planChanged,
 } = slice.actions;
 export default slice.reducer;

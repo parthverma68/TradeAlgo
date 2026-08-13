@@ -68,27 +68,31 @@ as a STOMP `CONNECT` header. Full backend config in the runbook, Phase 6.
 
 ## Screens
 
-The app has two surfaces. The **trading surface** is what you land on; the
-**analytics surface** is the institutional terminal, reachable from Profile.
+The app has two surfaces. The **confidence surface** is what you land on —
+pick a market, pick an industry, search a share, see what every indicator
+says about it. The **index analytics surface** is the institutional F&O
+terminal for NIFTY/BANKNIFTY, reachable from Profile.
 
-### Trading surface (light, tabbed)
+### Confidence surface (light, tabbed)
 
 | Screen | Shows |
 |---|---|
 | **Onboarding** | Welcome illustration, shown once — the flag persists across launches |
 | **Login** | Email/password; in mock mode any credentials sign you in |
-| **Home** | Portfolio total + day move, brand cluster, live search, "Stock Activates" cards with trend lines |
-| **Markets** | Full universe, search, All / Gainers / Losers filters |
-| **Market detail** | Dark card: tappable candlestick chart, 24hr/Week/Month/Year ranges, High/Low/Open/Prev close, today's volume, your position, **Sell / Buy** |
-| **Portfolio** | Value, invested vs cash, unrealised P&L, holdings, session order blotter |
-| **Profile** | Push toggle, links into the analytics surface, portfolio reset, sign out |
+| **Home** | Search, today's top confidence picks, one-tap industry shortcuts |
+| **Markets** | Market picker (India · NSE / United States) → industry category grid, each tile showing average confidence; global share search |
+| **Industry** | Every share in one market + category, ranked by confidence, with in-category search |
+| **Market detail** | A single share's confidence: a 0-100 ring, BUY/WATCH/AVOID call, one-line synthesis, price action chart, and every indicator group behind the score (F&O positioning, technical momentum, news & sentiment, earnings track record, forward earnings prospect, shareholder confidence) |
+| **Watchlist** | Shares you're tracking, each with its confidence pill; add/remove by ticker |
+| **Subscription** | Free vs Pro plan comparison — Pro unlocks the premium indicator groups, alerts and job scheduling |
+| **Profile** | Plan status, push toggle, links into index analytics, sign out |
 
-Buying and selling is real against local state: the order goes through
-`POST /orders`, and only a `FILLED` response moves cash and holdings. Rejects
-(unknown symbol, zero quantity) surface as an alert. Quantity is checked
-against buying power and position size before submission.
+There's no order ticket anywhere in this surface — the app doesn't execute
+trades. `earnings`, `future earnings prospect` and `shareholder confidence`
+are gated behind the Pro plan (`src/store/settingsSlice.ts`'s `plan` field);
+`fno`, `technical` and `news` are free.
 
-### Analytics surface (dark terminal)
+### Index analytics surface (dark terminal)
 
 | Screen | Shows |
 |---|---|
@@ -97,7 +101,7 @@ against buying power and position size before submission.
 | **Futures** | Basis, OI, ΔOI, buildup matrix with current state highlighted |
 | **News** | Sentiment-scored headlines + net sentiment |
 | **Alerts** | REST + pushed alerts merged, tap to acknowledge |
-| **Watchlist / Settings** | Symbol management, alert prefs, connection status |
+| **Settings** | Alert prefs, connection status |
 
 ---
 
@@ -127,15 +131,15 @@ src/
 ├── polyfills.ts      TextEncoder for STOMP on Hermes
 ├── api/              client.ts (REST door), marketApi.ts, mock.ts, mockStocks.ts
 ├── realtime/         stompClient.ts (realtime door)
-├── store/            auth · live · settings · portfolio slices
+├── store/            auth · live · settings (incl. plan) slices
 ├── services/         secureStorage (Keychain), notifications (FCM), telemetry
 ├── components/       primitives, Gauge, Sparkline, OIChart, SignalCard, StateViews
-│   └── ui/           trading surface: CandleChart, StockCard, TrendLine,
-│                     BrandMark, TradeSheet, FloatingTabBar, Layout
-├── design/           tokens + SVG icon set for the trading surface
-├── screens/          14 screens (7 trading, 7 analytics)
+│   └── ui/           confidence surface: CandleChart, StockCard, TrendLine,
+│                     StockAvatar, FloatingTabBar, Layout
+├── design/           tokens + SVG icon set for the confidence surface
+├── screens/          15 screens (7 confidence surface, 6 index analytics, onboarding + login)
 ├── hooks/            useLiveVerdict — the REST/push merge
-│                     useStocks — quotes/detail/portfolio read models
+│                     useStocks — quotes/detail/confidence read models
 ├── navigation/       RootNavigator (auth-gated tabs)
 ├── config.ts         env resolution + disclaimer
 ├── theme.ts          design tokens
@@ -164,7 +168,8 @@ src/
 - [ ] `GET /market/preopen`, `/options/chain/{symbol}`, `/futures/{symbol}`,
       `/global/markets`, `/sector/strength`, `/news/sentiment`, `/alerts`, `/watchlist`
 - [ ] `GET /stocks`, `GET /stocks/{symbol}?range=24hr|week|month|year`,
-      `POST /orders` → `{ id, symbol, side, qty, price, status, placedAt, reason? }`
+      `GET /stocks/{symbol}/confidence` → `StockConfidence` (overall score, recommendation,
+      six weighted `IndicatorGroup`s — see `src/types.ts`)
 - [ ] `POST /auth/login` · `/auth/register` → `{ token, user }`
 - [ ] STOMP `/ws` (no SockJS), `/topic/verdicts.{SYMBOL}`, `/user/queue/alerts`,
       JWT via `ChannelInterceptor`, `/topic/quotes` for last-traded prices
@@ -185,9 +190,17 @@ Stated plainly rather than left to discover:
 - **No crash reporting** — approach described in doc 02, not installed.
 - **Fonts not bundled** — add IBM Plex `.ttf` files or drop `fontFamily` from `theme.ts`.
 - **Charts are custom SVG**, deliberately lightweight. TradingView is a Phase 2 decision.
-- **Test coverage is partial** — 33 tests cover the fixture engine, the portfolio
-  reducer and the chart/card components. `useLiveVerdict`'s merge rule is still uncovered.
-- **The portfolio lives in memory** — orders survive navigation but not a restart,
-  and nothing is posted to a backend beyond `POST /orders`.
-- **Brand marks are simplified vectors**, not the trademarked wordmarks.
+- **Test coverage is partial** — the fixture engine, confidence scoring and the chart/card
+  components are covered. `useLiveVerdict`'s merge rule is still uncovered.
+- **Confidence scores are a local heuristic** — `mockConfidence()` in `mockStocks.ts` is a
+  deterministic stand-in for a real scoring service; every list badge computes it inline
+  rather than through the async `/confidence` endpoint, so a real backend should expose a
+  batched list-scoring route to avoid N calls per screen.
+- **Subscription billing is mocked** — `Subscription` screen just flips a local `plan` flag;
+  wiring a real payment provider and server-side entitlement check is unstarted.
+- **The watchlist and plan are local only** — nothing is posted to a backend yet beyond the
+  existing `/watchlist` endpoints; a restart currently keeps them since they aren't persisted
+  outside Redux state.
 - **`android/` and `ios/` not included** — generated by the CLI, then patched per doc 07.
+- **`docs/00-03` still describe the old buy/sell order flow** — those detailed integration
+  docs haven't been refreshed for the confidence surface yet; treat this README as current.

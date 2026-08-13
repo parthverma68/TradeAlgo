@@ -1,4 +1,4 @@
-import { mockDetail, mockOrder, mockQuote, mockQuotes, UNIVERSE } from '@/api/mockStocks';
+import { mockConfidence, mockDetail, mockQuote, mockQuotes, UNIVERSE } from '@/api/mockStocks';
 import { resolveMock } from '@/api/mock';
 import type { ChartRange } from '@/types';
 
@@ -16,13 +16,13 @@ describe('mock market data', () => {
 
   it('is deterministic — the same symbol and range give the same series', () => {
     const at = new Date('2026-08-13T09:30:00.000Z');
-    expect(mockDetail('TSLA', 'week', at)).toEqual(mockDetail('TSLA', 'week', at));
+    expect(mockDetail('TCS', 'week', at)).toEqual(mockDetail('TCS', 'week', at));
   });
 
   it('ends every series on the headline price so chart and header agree', () => {
     RANGES.forEach(range => {
-      const detail = mockDetail('TSLA', range);
-      const quote = mockQuote('TSLA');
+      const detail = mockDetail('TCS', range);
+      const quote = mockQuote('TCS');
       expect(detail).not.toBeNull();
       expect(detail!.candles[detail!.candles.length - 1].c).toBeCloseTo(quote!.price, 2);
     });
@@ -40,7 +40,7 @@ describe('mock market data', () => {
   });
 
   it('labels the first candle with a group heading for the axis', () => {
-    const detail = mockDetail('META', 'week');
+    const detail = mockDetail('INFY', 'week');
     expect(detail!.candles[0].group).toBeTruthy();
     expect(detail!.candles.slice(1).every(c => c.group === undefined)).toBe(true);
   });
@@ -51,29 +51,44 @@ describe('mock market data', () => {
   });
 });
 
-describe('mock order placement', () => {
-  it('fills a valid order at the current price', () => {
-    const order = mockOrder({ symbol: 'META', side: 'BUY', qty: 3 });
-    expect(order.status).toBe('FILLED');
-    expect(order.price).toBeCloseTo(40.8, 2);
+describe('mock confidence engine', () => {
+  it('builds six weighted indicator groups for every symbol', () => {
+    UNIVERSE.forEach(seed => {
+      const confidence = mockConfidence(seed.symbol);
+      expect(confidence).not.toBeNull();
+      expect(confidence!.groups).toHaveLength(6);
+      expect(confidence!.overall).toBeGreaterThanOrEqual(0);
+      expect(confidence!.overall).toBeLessThanOrEqual(100);
+      expect(['BUY', 'WATCH', 'AVOID']).toContain(confidence!.recommendation);
+    });
   });
 
-  it('rejects an unknown symbol and a non-positive quantity', () => {
-    expect(mockOrder({ symbol: 'NOPE', side: 'BUY', qty: 1 }).status).toBe('REJECTED');
-    expect(mockOrder({ symbol: 'META', side: 'SELL', qty: 0 }).status).toBe('REJECTED');
+  it('marks earnings, forward outlook and shareholder confidence as premium', () => {
+    const confidence = mockConfidence('TCS')!;
+    const premiumKeys = confidence.groups.filter(g => g.premium).map(g => g.key);
+    expect(premiumKeys.sort()).toEqual(['earnings', 'future', 'shareholder']);
+    const freeKeys = confidence.groups.filter(g => !g.premium).map(g => g.key);
+    expect(freeKeys.sort()).toEqual(['fno', 'news', 'technical']);
+  });
+
+  it('is deterministic — the same symbol gives the same score every call', () => {
+    expect(mockConfidence('RELIANCE')).toEqual(mockConfidence('RELIANCE'));
+  });
+
+  it('has no confidence for an unknown symbol', () => {
+    expect(mockConfidence('NOPE')).toBeNull();
   });
 });
 
 describe('mock route resolution', () => {
-  it('serves the consumer endpoints', () => {
+  it('serves the consumer confidence endpoints', () => {
     expect(Array.isArray(resolveMock('/stocks'))).toBe(true);
-    expect(resolveMock('/stocks/TSLA?range=week')).toMatchObject({ symbol: 'TSLA', range: 'week' });
-    expect(resolveMock('/orders', 'POST', { symbol: 'TSLA', side: 'BUY', qty: 1 }))
-      .toMatchObject({ status: 'FILLED', side: 'BUY' });
+    expect(resolveMock('/stocks/TCS?range=week')).toMatchObject({ symbol: 'TCS', range: 'week' });
+    expect(resolveMock('/stocks/TCS/confidence')).toMatchObject({ symbol: 'TCS' });
   });
 
   it('falls back to a safe range when the query string is junk', () => {
-    expect(resolveMock('/stocks/TSLA?range=decade')).toMatchObject({ range: '24hr' });
+    expect(resolveMock('/stocks/TCS?range=decade')).toMatchObject({ range: '24hr' });
   });
 
   it('returns null for an unmapped route so the caller can error honestly', () => {

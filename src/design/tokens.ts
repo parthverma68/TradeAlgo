@@ -42,6 +42,7 @@ export const ui = {
   /** Semantics. */
   green: '#16C266',
   red: '#F0495C',
+  amber: '#F59E0B',
 } as const;
 
 export const radii = {
@@ -73,6 +74,9 @@ export const shadow = {
 } as const;
 
 export const deltaColor = (n: number) => (n >= 0 ? ui.green : ui.red);
+
+export const recommendationColor = (r: 'BUY' | 'WATCH' | 'AVOID') =>
+  r === 'BUY' ? ui.green : r === 'AVOID' ? ui.red : ui.amber;
 
 /** `+6.70%` / `-1.24%` — always signed, always two decimals. */
 export const fmtPct = (n: number) => `${n >= 0 ? '+' : '-'}${Math.abs(n).toFixed(2)}%`;

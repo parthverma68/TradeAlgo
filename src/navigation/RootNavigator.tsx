@@ -5,19 +5,20 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import HomeScreen from '@/screens/HomeScreen';
 import MarketsScreen from '@/screens/MarketsScreen';
-import PortfolioScreen from '@/screens/PortfolioScreen';
+import IndustryScreen from '@/screens/IndustryScreen';
+import WatchlistScreen from '@/screens/WatchlistScreen';
 import ProfileScreen from '@/screens/ProfileScreen';
 import MarketDetailScreen from '@/screens/MarketDetailScreen';
+import SubscriptionScreen from '@/screens/SubscriptionScreen';
 import OnboardingScreen from '@/screens/OnboardingScreen';
 import LoginScreen from '@/screens/LoginScreen';
 
-/* analytics surface — reachable from Profile */
+/* index analytics surface (NIFTY/BANKNIFTY F&O terminal) — reachable from Profile */
 import DashboardScreen from '@/screens/DashboardScreen';
 import OptionChainScreen from '@/screens/OptionChainScreen';
 import FuturesScreen from '@/screens/FuturesScreen';
 import NewsScreen from '@/screens/NewsScreen';
 import AlertsScreen from '@/screens/AlertsScreen';
-import WatchlistScreen from '@/screens/WatchlistScreen';
 import SettingsScreen from '@/screens/SettingsScreen';
 
 import { FloatingTabBar } from '@/components/ui/FloatingTabBar';
@@ -60,7 +61,7 @@ function Tabs() {
     >
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Markets" component={MarketsScreen} />
-      <Tab.Screen name="Portfolio" component={PortfolioScreen} />
+      <Tab.Screen name="Watchlist" component={WatchlistScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );
@@ -81,18 +82,27 @@ export default function RootNavigator() {
           <>
             <Stack.Screen name="Main" component={Tabs} />
             <Stack.Screen
+              name="Industry"
+              component={IndustryScreen}
+              options={{ animation: 'slide_from_right' }}
+            />
+            <Stack.Screen
               name="MarketDetail"
               component={MarketDetailScreen}
               options={{ animation: 'slide_from_right' }}
             />
+            <Stack.Screen
+              name="Subscription"
+              component={SubscriptionScreen}
+              options={{ animation: 'slide_from_bottom' }}
+            />
 
             <Stack.Group screenOptions={{ ...analyticsOptions, headerShown: true }}>
-              <Stack.Screen name="Dashboard" component={DashboardScreen} />
+              <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'Index Dashboard' }} />
               <Stack.Screen name="Chain" component={OptionChainScreen} options={{ title: 'Option Chain' }} />
               <Stack.Screen name="Futures" component={FuturesScreen} />
               <Stack.Screen name="News" component={NewsScreen} />
               <Stack.Screen name="Alerts" component={AlertsScreen} />
-              <Stack.Screen name="Watchlist" component={WatchlistScreen} />
               <Stack.Screen name="Settings" component={SettingsScreen} />
             </Stack.Group>
           </>

@@ -10,12 +10,12 @@ import { Rect } from 'react-native-svg';
 import { CandleChart } from '@/components/ui/CandleChart';
 import { StockCard } from '@/components/ui/StockCard';
 import { TrendLine, smoothPath } from '@/components/ui/TrendLine';
-import { BrandMark } from '@/components/ui/BrandMark';
-import { mockDetail, mockQuote } from '@/api/mockStocks';
-import type { BrandKey } from '@/types';
+import { StockAvatar } from '@/components/ui/StockAvatar';
+import { mockConfidence, mockDetail, mockQuote } from '@/api/mockStocks';
+import type { SectorKey } from '@/types';
 
-const detail = mockDetail('TSLA', 'week')!;
-const quote = mockQuote('META')!;
+const detail = mockDetail('TCS', 'week')!;
+const quote = mockQuote('TCS')!;
 
 const render = (el: React.ReactElement) => {
   let tree: renderer.ReactTestRenderer;
@@ -90,9 +90,9 @@ describe('stock card', () => {
     const onPress = jest.fn();
     const tree = render(<StockCard quote={quote} onPress={onPress} />);
     const json = JSON.stringify(tree.toJSON());
-    expect(json).toContain('Facebook');
-    expect(json).toContain('$40.80');
-    expect(json).toContain('+6.70%');
+    expect(json).toContain('Tata Consultancy Services');
+    expect(json).toContain('₹3,854.20');
+    expect(json).toContain('+0.62%');
 
     const card = tree.root.find(
       n => n.props.accessibilityRole === 'button' && typeof n.props.onPress === 'function',
@@ -100,13 +100,23 @@ describe('stock card', () => {
     act(() => { card.props.onPress(); });
     expect(onPress).toHaveBeenCalled();
   });
+
+  it('renders a confidence pill when a recommendation is supplied', () => {
+    const confidence = mockConfidence('TCS')!;
+    const tree = render(
+      <StockCard quote={quote} confidence={confidence.overall} recommendation={confidence.recommendation} />,
+    );
+    const json = JSON.stringify(tree.toJSON());
+    expect(json).toContain(`${confidence.overall}% ${confidence.recommendation}`);
+  });
 });
 
-describe('brand marks', () => {
-  const brands: BrandKey[] = [
-    'facebook', 'twitter', 'tesla', 'amazon', 'netflix', 'google', 'microsoft', 'generic',
+describe('stock avatar', () => {
+  const sectors: SectorKey[] = [
+    'it', 'metal', 'semiconductor', 'pharma', 'banking',
+    'auto', 'energy', 'fmcg', 'realty', 'media',
   ];
-  it.each(brands)('renders the %s mark', brand => {
-    expect(() => render(<BrandMark brand={brand} />)).not.toThrow();
+  it.each(sectors)('renders the %s sector mark', sector => {
+    expect(() => render(<StockAvatar symbol="TCS" sector={sector} />)).not.toThrow();
   });
 });
