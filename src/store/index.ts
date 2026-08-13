@@ -5,11 +5,10 @@ import { marketApi } from '@/api/marketApi';
 import auth from './authSlice';
 import live from './liveSlice';
 import settings from './settingsSlice';
-import portfolio from './portfolioSlice';
 
 export const store = configureStore({
   reducer: {
-    auth, live, settings, portfolio,
+    auth, live, settings,
     [marketApi.reducerPath]: marketApi.reducer,
   },
   middleware: (gdm) => gdm().concat(marketApi.middleware),

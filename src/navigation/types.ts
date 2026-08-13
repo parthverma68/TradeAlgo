@@ -3,11 +3,12 @@ import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type {
   NativeStackNavigationProp, NativeStackScreenProps,
 } from '@react-navigation/native-stack';
+import type { MarketKey, SectorKey } from '@/types';
 
 export type MainTabParamList = {
   Home: undefined;
   Markets: undefined;
-  Portfolio: undefined;
+  Watchlist: undefined;
   Profile: undefined;
 };
 
@@ -15,14 +16,16 @@ export type RootStackParamList = {
   Onboarding: undefined;
   Login: undefined;
   Main: undefined;
+  /* market -> industry -> share confidence flow */
+  Industry: { market: MarketKey; sector: SectorKey };
   MarketDetail: { symbol: string };
-  /* analytics surface, reachable from Profile */
+  Subscription: undefined;
+  /* index analytics surface (NIFTY/BANKNIFTY F&O terminal), reachable from Profile */
   Dashboard: undefined;
   Chain: undefined;
   Futures: undefined;
   News: undefined;
   Alerts: undefined;
-  Watchlist: undefined;
   Settings: undefined;
 };
 

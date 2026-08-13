@@ -7,9 +7,9 @@
  * last REST snapshot instead of blanking the list.
  */
 import { useMemo } from 'react';
-import { useGetStocksQuery, useGetStockQuery } from '@/api/marketApi';
+import { useGetConfidenceQuery, useGetStocksQuery, useGetStockQuery } from '@/api/marketApi';
 import { useAppSelector } from '@/store';
-import type { ApiError, ChartRange, Holding, StockDetail, StockQuote } from '@/types';
+import type { ApiError, ChartRange, StockConfidence, StockDetail, StockQuote } from '@/types';
 
 /** Apply a streamed tick over a REST quote. */
 function overlay<T extends StockQuote>(quote: T, tick?: { price: number; changePct: number; asOf: string }): T {
@@ -53,65 +53,15 @@ export function useStock(symbol: string, range: ChartRange) {
   };
 }
 
-export interface PositionView extends Holding {
-  quote?: StockQuote;
-  marketValue: number;
-  cost: number;
-  pnl: number;
-  pnlPct: number;
-}
+/** The confidence score + indicator breakdown behind a single share. */
+export function useStockConfidence(symbol: string) {
+  const query = useGetConfidenceQuery(symbol);
 
-export interface PortfolioView {
-  positions: PositionView[];
-  holdingsValue: number;
-  cash: number;
-  total: number;
-  /** Day move of the invested book, value-weighted. */
-  dayChangePct: number;
-  totalPnl: number;
-  loading: boolean;
-}
-
-/** Joins local holdings with live quotes into everything the UI needs. */
-export function usePortfolio(): PortfolioView {
-  const { data: quotes, isLoading } = useStocks();
-  const { holdings, cash } = useAppSelector(s => s.portfolio);
-
-  return useMemo(() => {
-    const bySymbol = new Map(quotes.map(q => [q.symbol, q]));
-
-    const positions: PositionView[] = holdings.map(h => {
-      const quote = bySymbol.get(h.symbol);
-      const price = quote?.price ?? h.avgPrice;
-      const marketValue = price * h.qty;
-      const cost = h.avgPrice * h.qty;
-      return {
-        ...h,
-        quote,
-        marketValue,
-        cost,
-        pnl: marketValue - cost,
-        pnlPct: cost === 0 ? 0 : ((marketValue - cost) / cost) * 100,
-      };
-    });
-
-    const holdingsValue = positions.reduce((a, p) => a + p.marketValue, 0);
-    const totalPnl = positions.reduce((a, p) => a + p.pnl, 0);
-    const dayChangePct = holdingsValue === 0
-      ? 0
-      : positions.reduce(
-          (a, p) => a + p.marketValue * (p.quote?.changePct ?? 0),
-          0,
-        ) / holdingsValue;
-
-    return {
-      positions,
-      holdingsValue,
-      cash,
-      total: holdingsValue + cash,
-      dayChangePct,
-      totalPnl,
-      loading: isLoading,
-    };
-  }, [quotes, holdings, cash, isLoading]);
+  return {
+    data: query.data as StockConfidence | undefined,
+    error: query.error as ApiError | undefined,
+    isLoading: query.isLoading,
+    isFetching: query.isFetching,
+    refetch: query.refetch,
+  };
 }

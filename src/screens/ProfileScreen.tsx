@@ -7,23 +7,22 @@ import { Screen, SectionHeading } from '@/components/ui/Layout';
 import { ChevronRight } from '@/design/icons';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { notificationsToggled } from '@/store/settingsSlice';
-import { portfolioReset } from '@/store/portfolioSlice';
 import { loggedOut } from '@/store/authSlice';
 import { liveCleared } from '@/store/liveSlice';
 import { clearSession } from '@/services/secureStorage';
 import { disconnectStomp } from '@/realtime/stompClient';
 import { CONFIG, DISCLAIMER } from '@/config';
 import { ui, gap, radii, shadow } from '@/design/tokens';
+import { PLANS } from '@/types';
 import type { TabNav, RootStackParamList } from '@/navigation/types';
 
-/** The analytics surface, kept reachable from here. */
+/** The index F&O terminal — NIFTY/BANKNIFTY analytics, kept reachable from here. */
 const ANALYTICS: { route: keyof RootStackParamList; label: string; hint: string }[] = [
   { route: 'Dashboard', label: 'Pre-market dashboard', hint: 'Verdict, confidence, gauges' },
   { route: 'Chain', label: 'Option chain', hint: 'OI by strike, max pain' },
   { route: 'Futures', label: 'Futures', hint: 'Basis, OI buildup' },
   { route: 'News', label: 'News sentiment', hint: 'Scored headlines' },
   { route: 'Alerts', label: 'Alerts', hint: 'Pushed + fetched alerts' },
-  { route: 'Watchlist', label: 'Watchlist', hint: 'Symbols you follow' },
   { route: 'Settings', label: 'Alert settings', hint: 'Types, connection status' },
 ];
 
@@ -31,8 +30,9 @@ export default function ProfileScreen() {
   const navigation = useNavigation<TabNav<'Profile'>>();
   const dispatch = useAppDispatch();
   const user = useAppSelector(s => s.auth.user);
-  const { notificationsEnabled } = useAppSelector(s => s.settings);
+  const { notificationsEnabled, plan } = useAppSelector(s => s.settings);
   const connection = useAppSelector(s => s.live.connection);
+  const planInfo = PLANS.find(p => p.key === plan) ?? PLANS[0];
 
   const signOut = () => {
     Alert.alert('Sign out', 'You will need to sign in again.', [
@@ -47,13 +47,6 @@ export default function ProfileScreen() {
           await clearSession();
         },
       },
-    ]);
-  };
-
-  const resetPortfolio = () => {
-    Alert.alert('Reset portfolio', 'Restores the starting cash and positions.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Reset', style: 'destructive', onPress: () => dispatch(portfolioReset()) },
     ]);
   };
 
@@ -75,6 +68,23 @@ export default function ProfileScreen() {
             </View>
           </View>
 
+          <SectionHeading title="Subscription" />
+          <Pressable
+            onPress={() => navigation.navigate('Subscription')}
+            accessibilityRole="button"
+            style={[s.card, s.planCard]}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={s.rowLabel}>{planInfo.label} plan · {planInfo.priceLabel}</Text>
+              <Text style={s.rowHint}>
+                {plan === 'pro'
+                  ? 'Every indicator, alert and job unlocked'
+                  : 'Upgrade to unlock earnings, forward outlook, shareholder confidence & alerts'}
+              </Text>
+            </View>
+            <ChevronRight size={18} color={ui.textFaint} />
+          </Pressable>
+
           <SectionHeading title="Preferences" />
           <View style={s.card}>
             <View style={s.switchRow}>
@@ -91,7 +101,7 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          <SectionHeading title="Analytics" />
+          <SectionHeading title="Index analytics" />
           <View style={s.card}>
             {ANALYTICS.map((item, i) => (
               <Pressable
@@ -111,11 +121,7 @@ export default function ProfileScreen() {
 
           <SectionHeading title="Account" />
           <View style={s.card}>
-            <Pressable onPress={resetPortfolio} style={s.linkRow} accessibilityRole="button">
-              <Text style={s.rowLabel}>Reset demo portfolio</Text>
-              <ChevronRight size={18} color={ui.textFaint} />
-            </Pressable>
-            <Pressable onPress={signOut} style={[s.linkRow, s.linkDivider]} accessibilityRole="button">
+            <Pressable onPress={signOut} style={s.linkRow} accessibilityRole="button">
               <Text style={[s.rowLabel, { color: ui.red }]}>Sign out</Text>
               <ChevronRight size={18} color={ui.textFaint} />
             </Pressable>
@@ -157,6 +163,7 @@ const s = StyleSheet.create({
     marginBottom: gap.xl,
     ...shadow.card,
   },
+  planCard: { flexDirection: 'row', alignItems: 'center', paddingVertical: gap.lg },
   switchRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: gap.lg },
   linkRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: gap.lg },
   linkDivider: { borderTopWidth: 1, borderTopColor: ui.hairline },

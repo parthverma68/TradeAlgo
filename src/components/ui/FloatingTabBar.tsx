@@ -7,7 +7,7 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  HomeIconSolid, HomeIcon, ChartIcon, BriefcaseIcon, UserIcon, IconProps,
+  HomeIconSolid, HomeIcon, ChartIcon, BookmarkIcon, BookmarkIconSolid, UserIcon, IconProps,
 } from '@/design/icons';
 import { ui, radii, gap, shadow } from '@/design/tokens';
 
@@ -16,7 +16,7 @@ type IconCmp = React.FC<IconProps>;
 const ICONS: Record<string, { inactive: IconCmp; active: IconCmp }> = {
   Home: { inactive: HomeIcon, active: HomeIconSolid },
   Markets: { inactive: ChartIcon, active: ChartIcon },
-  Portfolio: { inactive: BriefcaseIcon, active: BriefcaseIcon },
+  Watchlist: { inactive: BookmarkIcon, active: BookmarkIconSolid },
   Profile: { inactive: UserIcon, active: UserIcon },
 };
 
