@@ -4,6 +4,6 @@
  */
 import { TextEncoder, TextDecoder } from 'text-encoding';
 
-const g = global as unknown as Record<string, unknown>;
+const g = globalThis as unknown as Record<string, unknown>;
 if (typeof g.TextEncoder === 'undefined') g.TextEncoder = TextEncoder;
 if (typeof g.TextDecoder === 'undefined') g.TextDecoder = TextDecoder;

@@ -17,9 +17,10 @@
 import { Client, IMessage, StompSubscription } from '@stomp/stompjs';
 import { AppState, AppStateStatus } from 'react-native';
 import { CONFIG } from '@/config';
+import { UNIVERSE } from '@/api/mockStocks';
 import { store } from '@/store';
-import { connectionChanged, verdictPushed, alertPushed } from '@/store/liveSlice';
-import type { PreOpen, AlertItem } from '@/types';
+import { connectionChanged, verdictPushed, quoteTicked, alertPushed } from '@/store/liveSlice';
+import type { PreOpen, AlertItem, LiveQuote } from '@/types';
 
 let client: Client | null = null;
 let subs: Record<string, StompSubscription> = {};
@@ -77,6 +78,17 @@ function subscribeAll(symbols: string[]) {
     });
   });
 
+  // Broadcast last-traded prices for the consumer screens. One topic for the
+  // whole universe — a subscription per symbol would be a lot of frames for
+  // data that changes together anyway.
+  subs.__quotes = client!.subscribe('/topic/quotes', (msg: IMessage) => {
+    try {
+      store.dispatch(quoteTicked(JSON.parse(msg.body) as LiveQuote));
+    } catch {
+      /* ignore */
+    }
+  });
+
   // User-scoped queue: Spring resolves /user/** to the authenticated principal.
   subs.__alerts = client!.subscribe('/user/queue/alerts', (msg: IMessage) => {
     try {
@@ -109,6 +121,7 @@ let mockTimer: ReturnType<typeof setInterval> | null = null;
 function startMockStream(symbols: string[]) {
   store.dispatch(connectionChanged('connected'));
   stopMockStream();
+  startMockQuoteStream();
   mockTimer = setInterval(async () => {
     const { MOCK_PREOPEN } = await import('@/api/mock');
     symbols.forEach(sym => {
@@ -137,4 +150,30 @@ function startMockStream(symbols: string[]) {
 function stopMockStream() {
   if (mockTimer) clearInterval(mockTimer);
   mockTimer = null;
+  if (quoteTimer) clearInterval(quoteTimer);
+  quoteTimer = null;
+}
+
+/**
+ * Drifts the consumer universe every few seconds so the home and market
+ * screens feel live without a backend. Movement is bounded to ±0.35% a tick —
+ * enough to see, small enough that prices stay recognisable.
+ */
+let quoteTimer: ReturnType<typeof setInterval> | null = null;
+
+function startMockQuoteStream() {
+  const last: Record<string, { price: number; changePct: number }> = {};
+
+  quoteTimer = setInterval(() => {
+    UNIVERSE.forEach(seed => {
+      const prev = last[seed.symbol] ?? { price: seed.price, changePct: seed.changePct };
+      const step = (Math.random() - 0.5) * 0.007;
+      const price = +(prev.price * (1 + step)).toFixed(2);
+      const changePct = +(prev.changePct + step * 100).toFixed(2);
+      last[seed.symbol] = { price, changePct };
+      store.dispatch(
+        quoteTicked({ symbol: seed.symbol, price, changePct, asOf: new Date().toISOString() }),
+      );
+    });
+  }, 4000);
 }

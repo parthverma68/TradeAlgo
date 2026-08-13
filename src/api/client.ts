@@ -26,7 +26,7 @@ const rawBaseQuery = fetchBaseQuery({
   },
 });
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms: number) => new Promise<void>((r) => { setTimeout(() => r(), ms); });
 
 /** Map any transport/HTTP failure onto a stable ApiError the UI can render. */
 function normaliseError(err: FetchBaseQueryError): ApiError {
@@ -56,10 +56,12 @@ export const baseQuery: BaseQueryFn<string | FetchArgs, unknown, ApiError> =
     // --- Mock short-circuit: app runs fully without a backend -----------------
     if (CONFIG.useMock) {
       const url = typeof args === 'string' ? args : args.url;
+      const method = typeof args === 'string' ? 'GET' : args.method ?? 'GET';
+      const body = typeof args === 'string' ? undefined : args.body;
       await sleep(220 + Math.random() * 260); // simulate latency
-      const data = resolveMock(url);
-      if (data === null)
-        return { error: { code: 'NOT_IMPLEMENTED', message: `No mock for ${url}` } };
+      const data = resolveMock(url, method, body);
+      if (data === null || data === undefined)
+        return { error: { code: 'NOT_FOUND', message: `No data for ${method} ${url}` } };
       return { data };
     }
 

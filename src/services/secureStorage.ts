@@ -33,3 +33,26 @@ export async function clearSession(): Promise<void> {
     /* nothing to clear */
   }
 }
+
+/**
+ * Small non-secret flags. Keychain rather than AsyncStorage only because it is
+ * already a dependency — nothing here is sensitive.
+ */
+const PREFS = 'com.premarketiq.prefs';
+
+export async function saveOnboarded(value: boolean): Promise<void> {
+  try {
+    await Keychain.setGenericPassword('onboarded', String(value), { service: PREFS });
+  } catch {
+    /* a failed write just means the welcome screen shows again */
+  }
+}
+
+export async function loadOnboarded(): Promise<boolean> {
+  try {
+    const creds = await Keychain.getGenericPassword({ service: PREFS });
+    return creds ? creds.password === 'true' : false;
+  } catch {
+    return false;
+  }
+}

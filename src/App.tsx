@@ -9,7 +9,8 @@ import BootSplash from 'react-native-bootsplash';
 import { store, useAppDispatch, useAppSelector } from '@/store';
 import { hydrated } from '@/store/authSlice';
 import { networkChanged } from '@/store/liveSlice';
-import { loadSession } from '@/services/secureStorage';
+import { onboardingHydrated } from '@/store/settingsSlice';
+import { loadSession, loadOnboarded } from '@/services/secureStorage';
 import { connectStomp, disconnectStomp, updateSubscription } from '@/realtime/stompClient';
 import {
   requestPushToken, onTokenRefresh, onForegroundMessage, addNotificationTapListener,
@@ -17,7 +18,7 @@ import {
 import { startTelemetry, stopTelemetry, track } from '@/services/telemetry';
 import { useRegisterDeviceMutation } from '@/api/marketApi';
 import RootNavigator from '@/navigation/RootNavigator';
-import { colors } from '@/theme';
+import { ui } from '@/design/tokens';
 
 function Bootstrap() {
   const dispatch = useAppDispatch();
@@ -26,11 +27,14 @@ function Bootstrap() {
   const [registerDevice] = useRegisterDeviceMutation();
   const [ready, setReady] = useState(false);
 
-  // 1. Restore the session before first render, then drop the splash.
+  // 1. Restore the session + onboarding flag before first render, then drop
+  //    the splash. Both reads happen together so the first frame is the real
+  //    destination screen rather than a flash of the welcome screen.
   useEffect(() => {
     (async () => {
-      const session = await loadSession();
+      const [session, seenWelcome] = await Promise.all([loadSession(), loadOnboarded()]);
       dispatch(hydrated(session));
+      dispatch(onboardingHydrated(seenWelcome));
       setReady(true);
       await BootSplash.hide({ fade: true });
     })();
@@ -77,8 +81,8 @@ function Bootstrap() {
 
   if (!ready || !isHydrated) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator color={colors.blue} />
+      <View style={{ flex: 1, backgroundColor: ui.screenTop, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator color={ui.purple} />
       </View>
     );
   }
@@ -90,7 +94,7 @@ export default function App() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <Provider store={store}>
         <SafeAreaProvider>
-          <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
+          <StatusBar barStyle="dark-content" backgroundColor={ui.screenTop} />
           <Bootstrap />
         </SafeAreaProvider>
       </Provider>

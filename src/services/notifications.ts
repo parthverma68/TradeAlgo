@@ -45,6 +45,18 @@ export async function requestPushToken(): Promise<string | null> {
   return messaging().getToken();
 }
 
+/**
+ * Drop the device token on sign-out so alerts for this account stop reaching
+ * this handset. The backend prunes the dead token on its next send.
+ */
+export async function deletePushToken(): Promise<void> {
+  try {
+    await messaging().deleteToken();
+  } catch {
+    /* no token registered, or FCM unavailable — nothing to revoke */
+  }
+}
+
 /** FCM rotates tokens. Re-register whenever it changes or the backend goes stale. */
 export function onTokenRefresh(cb: (token: string) => void) {
   return messaging().onTokenRefresh(cb);
