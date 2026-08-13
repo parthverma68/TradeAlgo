@@ -2,12 +2,9 @@
   "extends": "@react-native/typescript-config/tsconfig.json",
   "compilerOptions": {
     "strict": true,
-    // es2015 (the RN preset default) forbids dynamic import(), which the mock
-    // stream uses to keep fixtures out of the production bundle.
-    "module": "es2020",
     "baseUrl": ".",
     "paths": { "@/*": ["src/*"] }
   },
-  "include": ["src", "index.js"],
+  "include": ["src", "types", "index.js"],
   "exclude": ["node_modules", "android", "ios"]
 }

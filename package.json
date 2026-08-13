@@ -60,7 +60,13 @@
   "jest": {
     "preset": "react-native",
     "transformIgnorePatterns": [
-      "node_modules/(?!(@react-native|react-native|@reduxjs/toolkit|immer|redux|reselect)/)"
-    ]
+      "node_modules/(?!(@react-native|react-native|@reduxjs/toolkit|immer|redux|reselect|react-redux)/)"
+    ],
+    "setupFiles": [
+      "<rootDir>/jest.setup.js"
+    ],
+    "moduleNameMapper": {
+      "\\.(png|jpg|jpeg|gif|webp|bmp|psd|mp4)$": "<rootDir>/jest.assetMock.js"
+    }
   }
 }

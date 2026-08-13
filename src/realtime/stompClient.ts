@@ -17,6 +17,7 @@
 import { Client, IMessage, StompSubscription } from '@stomp/stompjs';
 import { AppState, AppStateStatus } from 'react-native';
 import { CONFIG } from '@/config';
+import { MOCK_PREOPEN } from '@/api/mock';
 import { UNIVERSE } from '@/api/mockStocks';
 import { store } from '@/store';
 import { connectionChanged, verdictPushed, quoteTicked, alertPushed } from '@/store/liveSlice';
@@ -122,8 +123,9 @@ function startMockStream(symbols: string[]) {
   store.dispatch(connectionChanged('connected'));
   stopMockStream();
   startMockQuoteStream();
-  mockTimer = setInterval(async () => {
-    const { MOCK_PREOPEN } = await import('@/api/mock');
+  // Static import: '@/api/mock' is already pulled in by the REST door
+  // (client.ts), so deferring it here saved nothing and broke under jest.
+  mockTimer = setInterval(() => {
     symbols.forEach(sym => {
       const base = MOCK_PREOPEN[sym];
       if (!base) return;

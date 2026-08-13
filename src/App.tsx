@@ -36,7 +36,13 @@ function Bootstrap() {
       dispatch(hydrated(session));
       dispatch(onboardingHydrated(seenWelcome));
       setReady(true);
-      await BootSplash.hide({ fade: true });
+      try {
+        await BootSplash.hide({ fade: true });
+      } catch (e) {
+        // The native splash is optional (docs/07 step 5). If it was never
+        // generated, hide() rejects — that must not take the app down.
+        console.warn('[splash] nothing to hide', e);
+      }
     })();
   }, [dispatch]);
 

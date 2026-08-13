@@ -36,8 +36,15 @@ npm run android      # or npm run ios
 ```
 
 Ships with `USE_MOCK=true`, so **every screen works before your backend exists** —
-realistic fixtures, simulated latency, and a mock stream that drifts prices every 5 seconds.
+realistic fixtures, simulated latency, and a mock stream that drifts prices every few seconds.
 Sign in with any email and password.
+
+**Firebase and the native splash are optional.** Until you complete docs/07 steps 5
+and 6 (`google-services.json` / `GoogleService-Info.plist`, the Google Services Gradle
+plugin, `generate-bootsplash`), push alerts are simply off and the app logs a warning —
+it still launches. It did not always: `index.js` used to call `messaging()` during module
+evaluation, which threw `No Firebase App '[DEFAULT]' has been created` on any build
+without Firebase configured and killed the app before the first frame.
 
 Point it at Spring Boot by setting `USE_MOCK=false` in `.env.development` and rebuilding.
 
@@ -185,8 +192,12 @@ Stated plainly rather than left to discover:
 - **No crash reporting** — approach described in doc 02, not installed.
 - **Fonts not bundled** — add IBM Plex `.ttf` files or drop `fontFamily` from `theme.ts`.
 - **Charts are custom SVG**, deliberately lightweight. TradingView is a Phase 2 decision.
-- **Test coverage is partial** — 33 tests cover the fixture engine, the portfolio
-  reducer and the chart/card components. `useLiveVerdict`'s merge rule is still uncovered.
+- **Test coverage is partial** — 40 tests cover the fixture engine, the portfolio
+  reducer, the chart/card components, app startup (including the unconfigured-Firebase
+  path) and the welcome → sign-in → market → buy walkthrough. `useLiveVerdict`'s merge
+  rule is still uncovered.
+- **Push is off until Firebase is configured** — `isPushAvailable()` reports the state;
+  every push entry point no-ops rather than throwing.
 - **The portfolio lives in memory** — orders survive navigation but not a restart,
   and nothing is posted to a backend beyond `POST /orders`.
 - **Brand marks are simplified vectors**, not the trademarked wordmarks.

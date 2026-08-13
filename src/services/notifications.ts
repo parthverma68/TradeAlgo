@@ -3,6 +3,12 @@
  * Firebase Messaging supplies the device token (FCM on Android, APNs-via-FCM on
  * iOS). Notifee renders foreground notifications, which FCM does not do itself.
  * See docs/02-INTEGRATION-DOWNSTREAM.md
+ *
+ * Push is OPTIONAL at runtime. Until docs/07 step 6 is done — `google-services.json`
+ * on Android, `GoogleService-Info.plist` on iOS, plus the Google Services Gradle
+ * plugin — calling `messaging()` throws "No Firebase App '[DEFAULT]' has been
+ * created". Every entry point below therefore degrades to a no-op instead of
+ * throwing: an app with no alerts still beats an app that will not launch.
  */
 import { Platform, PermissionsAndroid } from 'react-native';
 import messaging, {
@@ -11,38 +17,73 @@ import messaging, {
 import notifee, { AndroidImportance, EventType } from '@notifee/react-native';
 
 const CHANNEL_ID = 'market-alerts';
+const noop = () => {};
+
+let warned = false;
+
+/** The messaging instance, or null when Firebase is not configured natively. */
+function fcm(): FirebaseMessagingTypes.Module | null {
+  try {
+    return messaging();
+  } catch (e) {
+    if (!warned) {
+      warned = true;
+      console.warn(
+        '[push] Firebase is not configured for this build — push alerts are off. ' +
+          'See docs/07-NATIVE-SETUP.md step 6.',
+        e,
+      );
+    }
+    return null;
+  }
+}
+
+/** True when push can actually work on this build. */
+export const isPushAvailable = () => fcm() !== null;
 
 async function ensureAndroidChannel() {
   if (Platform.OS !== 'android') return;
-  await notifee.createChannel({
-    id: CHANNEL_ID,
-    name: 'Market alerts',
-    importance: AndroidImportance.HIGH,
-    vibration: true,
-  });
+  try {
+    await notifee.createChannel({
+      id: CHANNEL_ID,
+      name: 'Market alerts',
+      importance: AndroidImportance.HIGH,
+      vibration: true,
+    });
+  } catch {
+    /* Notifee unavailable — notifications simply will not render */
+  }
 }
 
-/** Ask for permission, then return the FCM token (or null if denied). */
+/** Ask for permission, then return the FCM token (or null if denied/unavailable). */
 export async function requestPushToken(): Promise<string | null> {
-  if (Platform.OS === 'android' && Number(Platform.Version) >= 33) {
-    const granted = await PermissionsAndroid.request(
-      PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
-    );
-    if (granted !== PermissionsAndroid.RESULTS.GRANTED) return null;
-  } else {
-    const status = await messaging().requestPermission();
-    const ok =
-      status === messaging.AuthorizationStatus.AUTHORIZED ||
-      status === messaging.AuthorizationStatus.PROVISIONAL;
-    if (!ok) return null;
+  const m = fcm();
+  if (!m) return null;
+
+  try {
+    if (Platform.OS === 'android' && Number(Platform.Version) >= 33) {
+      const granted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+      );
+      if (granted !== PermissionsAndroid.RESULTS.GRANTED) return null;
+    } else {
+      const status = await m.requestPermission();
+      const ok =
+        status === messaging.AuthorizationStatus.AUTHORIZED ||
+        status === messaging.AuthorizationStatus.PROVISIONAL;
+      if (!ok) return null;
+    }
+
+    await ensureAndroidChannel();
+
+    // iOS must register with APNs before a token is available.
+    if (Platform.OS === 'ios') await m.registerDeviceForRemoteMessages();
+
+    return await m.getToken();
+  } catch (e) {
+    console.warn('[push] could not obtain a device token', e);
+    return null;
   }
-
-  await ensureAndroidChannel();
-
-  // iOS must register with APNs before a token is available.
-  if (Platform.OS === 'ios') await messaging().registerDeviceForRemoteMessages();
-
-  return messaging().getToken();
 }
 
 /**
@@ -51,7 +92,7 @@ export async function requestPushToken(): Promise<string | null> {
  */
 export async function deletePushToken(): Promise<void> {
   try {
-    await messaging().deleteToken();
+    await fcm()?.deleteToken();
   } catch {
     /* no token registered, or FCM unavailable — nothing to revoke */
   }
@@ -59,19 +100,26 @@ export async function deletePushToken(): Promise<void> {
 
 /** FCM rotates tokens. Re-register whenever it changes or the backend goes stale. */
 export function onTokenRefresh(cb: (token: string) => void) {
-  return messaging().onTokenRefresh(cb);
+  return fcm()?.onTokenRefresh(cb) ?? noop;
 }
 
 /** Foreground pushes are silent by default — render them explicitly. */
 export function onForegroundMessage() {
-  return messaging().onMessage(async (msg: FirebaseMessagingTypes.RemoteMessage) => {
+  const m = fcm();
+  if (!m) return noop;
+
+  return m.onMessage(async (msg: FirebaseMessagingTypes.RemoteMessage) => {
     await ensureAndroidChannel();
-    await notifee.displayNotification({
-      title: msg.notification?.title ?? 'PreMarketIQ',
-      body: msg.notification?.body ?? '',
-      data: msg.data,
-      android: { channelId: CHANNEL_ID, pressAction: { id: 'default' } },
-    });
+    try {
+      await notifee.displayNotification({
+        title: msg.notification?.title ?? 'PreMarketIQ',
+        body: msg.notification?.body ?? '',
+        data: msg.data,
+        android: { channelId: CHANNEL_ID, pressAction: { id: 'default' } },
+      });
+    } catch (e) {
+      console.warn('[push] could not display a foreground notification', e);
+    }
   });
 }
 
@@ -82,13 +130,30 @@ export function onForegroundMessage() {
  *  3. app killed         -> messaging().getInitialNotification
  */
 export function addNotificationTapListener(cb: (data: Record<string, unknown>) => void) {
-  const unsubNotifee = notifee.onForegroundEvent(({ type, detail }) => {
-    if (type === EventType.PRESS) cb(detail.notification?.data ?? {});
-  });
-  const unsubOpened = messaging().onNotificationOpenedApp(msg => cb(msg?.data ?? {}));
-  messaging()
-    .getInitialNotification()
-    .then(msg => { if (msg) cb(msg.data ?? {}); });
+  let unsubNotifee = noop;
+  try {
+    unsubNotifee = notifee.onForegroundEvent(({ type, detail }) => {
+      if (type === EventType.PRESS) cb(detail.notification?.data ?? {});
+    });
+  } catch {
+    /* Notifee unavailable */
+  }
+
+  const m = fcm();
+  const unsubOpened = m?.onNotificationOpenedApp(msg => cb(msg?.data ?? {})) ?? noop;
+  m?.getInitialNotification()
+    .then(msg => { if (msg) cb(msg.data ?? {}); })
+    .catch(() => { /* nothing pending */ });
 
   return { remove: () => { unsubNotifee(); unsubOpened(); } };
+}
+
+/**
+ * Registers the headless handler for data-only pushes that arrive with the app
+ * backgrounded or killed. Safe to call when Firebase is absent.
+ */
+export function registerBackgroundMessageHandler(
+  handler: (msg: FirebaseMessagingTypes.RemoteMessage) => Promise<void>,
+) {
+  fcm()?.setBackgroundMessageHandler(handler);
 }
