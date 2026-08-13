@@ -1,0 +1,22 @@
+node_modules/
+.env
+*.log
+.DS_Store
+
+# Android
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/app/google-services.json
+*.keystore
+!debug.keystore
+
+# iOS
+ios/Pods/
+ios/build/
+ios/*.xcworkspace/xcuserdata/
+ios/GoogleService-Info.plist
+
+# Metro
+.metro-health-check*
