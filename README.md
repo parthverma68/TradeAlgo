@@ -160,6 +160,7 @@ src/
 | [05 · Setup, Build & Release](docs/05-SETUP-BUILD-RELEASE.md) | Environments, Gradle, release checklist |
 | [06 · Error Handling & Offline](docs/06-ERROR-HANDLING-OFFLINE.md) | Failure modes + test list |
 | [07 · Native Setup](docs/07-NATIVE-SETUP.md) | Android/iOS patching, Firebase, fonts, signing |
+| [Backend build plan](docs/backend-plan/README.md) | Building the Spring Boot backend from scratch — 8-week plan covering **both India (NSE/BSE) and US (NYSE/NASDAQ) markets** |
 
 ---
 
