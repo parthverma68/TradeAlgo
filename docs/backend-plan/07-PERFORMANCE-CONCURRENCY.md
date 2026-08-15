@@ -96,6 +96,7 @@ resource (a shared thread pool is the usual culprit) and fix it.
 |---|---|---|
 | `verdict:{market}:{symbol}` | 120s | scheduler |
 | `chain:{market}:{symbol}` | 60s | scheduler |
+| `technical:{market}:{symbol}` | 3600s | scheduler (daily EOD job — an hour-long TTL is still fresher than the underlying data) |
 | `global:board` | 300s | scheduler (cross-market, no `market` in the key) |
 | `news:summary:{market}:{symbol}` | 600s | scheduler |
 | `ratelimit:{userId}` | rolling | request path |

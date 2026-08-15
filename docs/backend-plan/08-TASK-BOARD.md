@@ -22,7 +22,9 @@ week, not staged one after the other — items below say so explicitly wherever 
 - [ ] Spring Boot 3.3 project, Java 21, **packages by feature**
 - [ ] Flyway `V1__core_market.sql` — `market` column + composite `(market, symbol, …)` UNIQUE
       constraints on every market table
-- [ ] JPA entities + repositories for the market tables, all keyed by `(market, symbol)`
+- [ ] JPA entities + repositories for the market tables, all keyed by `(market, symbol)`,
+      including `price_candles`
+- [ ] Backfill ~250 daily OHLCV sessions per symbol, both markets, into `price_candles`
 - [ ] DTOs matching the mobile `03-API-CONTRACT.md` exactly, including the `market`/`currency`
       fields
 - [ ] Jackson config: ISO-8601, non-null
@@ -57,6 +59,8 @@ week, not staged one after the other — items below say so explicitly wherever 
 - [ ] Two `@Scheduled` ingestion jobs: `Asia/Kolkata` (India), `America/New_York` (US)
 - [ ] FII/DII daily parser (India)
 - [ ] COT weekly parser (US)
+- [ ] Third `@Scheduled` job: daily EOD candle ingestion into `price_candles`, both markets,
+      after each market's close
 - [ ] Break test: dead India upstream → its breaker opens → recovers; **confirm US ingestion
       was unaffected the whole time**
 - [ ] Fix one deliberate race condition
@@ -66,7 +70,13 @@ week, not staged one after the other — items below say so explicitly wherever 
 - [ ] `SignalEngineService` — pure, no I/O, takes `(market, symbol)`-scoped input
 - [ ] Tests: Max Pain (hand-computed), bullish, bearish, neutral fixtures — **for both markets**
 - [ ] Persist verdicts to `market_sentiment`
-- [ ] Redis cache-aside + TTLs, keys namespaced `{market}:{symbol}`
+- [ ] `TechnicalIndicatorService` — pure, RSI(14) via Wilder's smoothing, SMA(50)/SMA(200) +
+      above/below flags, volume vs 30-day average — the "graph indicators"
+- [ ] Tests: hand-computed RSI(14) fixture, above/below-both-averages fixtures, and the
+      `< 200 candles → null sma_200` case — **for both markets**
+- [ ] Persist technical snapshots to `technical_indicators`
+- [ ] Redis cache-aside + TTLs, keys namespaced `{market}:{symbol}` (`technical:*` at a longer,
+      hourly TTL — this data only changes once a day)
 - [ ] Scheduler writes through (refresh-ahead), per market
 - [ ] Cache stampede handling (pick and implement one)
 - [ ] All remaining GET endpoints, contract-shaped, accepting `market`

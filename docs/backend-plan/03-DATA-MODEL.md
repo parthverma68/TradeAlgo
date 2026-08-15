@@ -73,6 +73,23 @@ CREATE TABLE option_chain (
 );
 CREATE INDEX idx_chain_lookup ON option_chain (market, symbol, expiry, captured_at DESC);
 
+-- Daily OHLCV history. This is what the "Technical Momentum" indicator group
+-- (RSI, moving averages, volume surge) is computed from — a different shape and a
+-- different ingestion cadence to option_chain: one bar per symbol per day, backfilled
+-- ~250 trading sessions on first run, not a multi-times-a-day snapshot.
+CREATE TABLE price_candles (
+  id           BIGSERIAL PRIMARY KEY,
+  market       TEXT NOT NULL CHECK (market IN ('IN','US')),
+  symbol       TEXT NOT NULL,
+  interval     TEXT NOT NULL DEFAULT '1d' CHECK (interval IN ('1d')),  -- intraday intervals are a later addition, not week 1
+  bucket_start DATE NOT NULL,     -- the trading session this bar covers
+  open  NUMERIC(14,4) NOT NULL, high NUMERIC(14,4) NOT NULL,
+  low   NUMERIC(14,4) NOT NULL,  close NUMERIC(14,4) NOT NULL,
+  volume BIGINT NOT NULL,
+  CONSTRAINT uq_candle UNIQUE (market, symbol, interval, bucket_start)
+);
+CREATE INDEX idx_candles_lookup ON price_candles (market, symbol, interval, bucket_start DESC);
+
 CREATE TABLE futures_data (
   id BIGSERIAL PRIMARY KEY,
   market TEXT NOT NULL CHECK (market IN ('IN','US')),
@@ -179,6 +196,24 @@ CREATE TABLE market_sentiment (
 );
 CREATE INDEX idx_sentiment_market_symbol_time ON market_sentiment (market, symbol, computed_at DESC);
 
+-- The "Technical Momentum" indicator group — the chart/graph indicators. Computed
+-- from price_candles by a pure TechnicalIndicatorService (same "pure function"
+-- discipline as SignalEngineService), on the same daily cadence as candle ingestion.
+CREATE TABLE technical_indicators (
+  id                   BIGSERIAL PRIMARY KEY,
+  market               TEXT NOT NULL CHECK (market IN ('IN','US')),
+  symbol               TEXT NOT NULL,
+  rsi_14               NUMERIC(6,2),   -- Wilder's RSI, 14-period
+  sma_50               NUMERIC(14,4),
+  sma_200              NUMERIC(14,4),
+  above_sma_50         BOOLEAN,
+  above_sma_200        BOOLEAN,
+  volume_vs_30d_avg_pct NUMERIC(8,2),  -- (today's volume / trailing 30d avg volume - 1) * 100
+  computed_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (market, symbol, computed_at)
+);
+CREATE INDEX idx_technical_market_symbol_time ON technical_indicators (market, symbol, computed_at DESC);
+
 CREATE TABLE alerts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -196,6 +231,15 @@ it against the next session's actual open — India's next 09:15 IST print, or t
 this before ever claiming it does. Don't pool both markets' hit rates into one number; a
 signal that works on NIFTY and not on SPX (or vice versa) is a real, useful finding that a
 combined average would hide.
+
+**Why `sma_200` forces a backfill decision in week 1, not week 4:** a 200-day simple moving
+average needs 200 prior daily bars before it can compute at all. If `price_candles` only
+starts filling from the day you deploy, `sma_200` (and the "vs 200-day average" indicator) is
+`null` for the first ~9-10 months for both markets — which is a correct `null`, not a bug (see
+the "never fabricate" rule), but it's a bad first impression. Backfill ~250 trading sessions of
+daily OHLCV per symbol from your vendor's historical-data endpoint (most broker/vendor APIs
+offer one) as part of week 1's data-source setup, for **both** markets, so `sma_200` has real
+data from day one instead of nine months in.
 
 ---
 

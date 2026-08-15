@@ -36,7 +36,13 @@ Flyway migrations, **SQL depth** (indexes, joins, `EXPLAIN ANALYZE`), Testcontai
 - Flyway migrations for the core schema (see `03-DATA-MODEL.md`), with a `market TEXT NOT
   NULL CHECK (market IN ('IN','US'))` column and composite `(market, symbol, …)` keys from
   the first migration.
-- JPA entities + repositories for `market_indices`, `option_chain`, `futures_data`.
+- JPA entities + repositories for `market_indices`, `option_chain`, `futures_data`,
+  `price_candles` (daily OHLCV — this is what week 4's technical/graph indicators are computed
+  from, so the table exists from week 1 even though nothing reads it until week 4).
+- **Backfill ~250 daily sessions of OHLCV history per symbol, both markets**, from your
+  vendor's historical-data endpoint — a 200-day moving average needs 200 prior bars before it
+  can compute at all, and starting the table empty means that indicator is `null` for the
+  first ~9 months. Do this once, by hand, in week 1; don't let it become a week-4 surprise.
 - DTOs matching `03-API-CONTRACT.md` from the mobile repo, **exactly** — including the
   `market` field the contract now requires on every market payload.
 - `GET /api/v1/market/preopen` returning hardcoded data in the contract shape, for one fixture
@@ -149,6 +155,11 @@ timeout), `@Scheduled`, thread-safety.
   different trading calendars (NSE holidays vs NYSE/NASDAQ holidays) and, once daylight
   saving shifts the US session in the wall clock, different UTC trigger times through the
   year. Two schedules is the honest model.
+- **A third, much slower `@Scheduled` job: daily EOD candle ingestion** into `price_candles`,
+  once per symbol per market per trading day, after that market's close. This is a completely
+  different cadence to the chain/futures polling above (once a day vs every few minutes) —
+  don't fold it into the same job just because it shares a `MarketDataAdapter`. It's what feeds
+  week 4's technical/graph indicators (RSI, moving averages, volume surge).
 
 ### Concept work
 - Write the same fan-out three ways: sequential, fixed thread pool, virtual threads. Time all
@@ -186,9 +197,33 @@ abstraction, HikariCP connection pooling, DB indexing, N+1 detection, pagination
   risk) — the formulas themselves don't change per market, but every input is scoped to one.
 - JUnit tests: hand-computable Max Pain fixture **for each market**; obviously-bullish →
   `BULLISH`; obviously bearish → `BEARISH`; balanced → `NEUTRAL`.
+- **`TechnicalIndicatorService` — the "graph indicators."** Also **pure**, same discipline as
+  `SignalEngineService`: input is the last ~200 `price_candles` rows for `(market, symbol)`,
+  output is a `TechnicalSnapshot`. Compute:
+  - **RSI(14)** — Wilder's smoothing, not a naive average; the difference matters for the
+    fixture test below.
+  - **SMA(50)** and **SMA(200)**, plus `above_sma_50` / `above_sma_200` booleans (the
+    "vs 50/200-day average" indicators the app already renders).
+  - **Volume vs 30-day average** — `(todayVolume / avg(last 30 days) - 1) * 100`.
+  - If fewer than 200 candles exist for a symbol, `sma_200` (and anything derived from it) is
+    `null` — that's the correct answer, not a bug (see week 1's backfill note in
+    `03-DATA-MODEL.md`). Never substitute a shorter window silently; a mislabeled "200-day"
+    average computed from 40 days of data is exactly the kind of fabricated number this whole
+    plan tries to design against.
+  - MACD and Bollinger Bands are a natural, self-contained addition once RSI/SMA are solid and
+    tested — same input, same pure-function shape — but they're not required for the app's
+    current "Technical Momentum" group, so treat them as a week-4 stretch, not a blocker.
+- JUnit tests for `TechnicalIndicatorService`: a hand-computed RSI(14) fixture (there are
+  published worked examples — use one, don't trust your own arithmetic on the first pass), a
+  candle series that should sit clearly above both moving averages and one clearly below, and
+  the `< 200 candles → null sma_200` case. **For each market** — the formulas are identical,
+  but a fixture built only from India data can hide a bug that only shows up on US data with a
+  different price scale (₹1000s vs $100s) or a different volume scale.
 - Redis cache-aside on read endpoints. Keys and TTLs, now market-scoped:
-  `verdict:{market}:{symbol}` 120s · `chain:{market}:{symbol}` 60s · `global:board` 300s
-  (global markets board is inherently cross-market, so it stays unkeyed by a single market).
+  `verdict:{market}:{symbol}` 120s · `chain:{market}:{symbol}` 60s ·
+  `technical:{market}:{symbol}` 3600s (technical indicators only change once a day, so an
+  hourly TTL is generous, not stale) · `global:board` 300s (global markets board is inherently
+  cross-market, so it stays unkeyed by a single market).
 - **Only the scheduler writes through to Redis.** A client request must never trigger an
   upstream broker fetch — that's how you exhaust your rate limit at either market's open
   (09:15 IST or 09:30 ET).
@@ -210,9 +245,14 @@ properly once and you'll never skip it again.
 
 ### Verify gate
 - [ ] Signal engine tests pass, including the hand-computed Max Pain for **both** markets
+- [ ] `TechnicalIndicatorService` tests pass, including the hand-computed RSI(14) and the
+      `< 200 candles → null sma_200` case, for **both** markets
 - [ ] p95 latency documented before and after caching, for an India and a US symbol
 - [ ] Cache hit ratio observable, broken down by market
 - [ ] `/market/preopen` serves real computed verdicts from real ingested data for both markets
+- [ ] A stock/index with a genuinely golden-cross-like candle history returns
+      `above_sma_50 = true, above_sma_200 = true` and the reverse for a clearly bearish one —
+      checked by eye against the same symbol's chart, not just asserted in a unit test
 
 ---
 

@@ -33,7 +33,7 @@ com.premarketiq
 │   ├── MarketDataAdapter.java                              interface
 │   ├── in/         InMarketDataAdapter, India DTO mapping
 │   └── us/         UsMarketDataAdapter, US DTO mapping
-├── signals/        engine (pure), rules                    (market-agnostic)
+├── signals/        SignalEngineService + TechnicalIndicatorService (both pure), rules  (market-agnostic)
 ├── news/           crawler, rag
 ├── alerts/         rules, dispatch
 └── common/         config, errors, security
@@ -45,6 +45,12 @@ when you later ask "could this be its own service?", the answer is already drawn
 `ingestion/in` vs `ingestion/us` split is the one place market-specific code is allowed to
 diverge; everything downstream of `MarketDataAdapter` operates on the same normalized DTO
 regardless of which market produced it.
+
+A third scheduled job (not drawn above to keep the diagram readable) writes daily OHLCV bars
+into `price_candles` once per symbol after each market's close — a much slower cadence than the
+chain/futures polling. `TechnicalIndicatorService` reads that table to produce the "graph
+indicators" (RSI, moving averages, volume surge); it sits in `signals/` next to
+`SignalEngineService`, same pure-function rule, same market-agnostic contract.
 
 ---
 

@@ -77,6 +77,7 @@ Everything on your list, mapped to where it does real work:
 | Security, rate limiting | 2, 8 | public API + two independent vendor quotas to protect |
 | Multithreading, virtual threads | 3 | parallel upstream fetch across *two* markets' adapters |
 | Java Streams | 3, 4 | chain parsing, signal aggregation |
+| Technical/graph indicators (RSI, SMA, volume) | 3, 4 | `price_candles` daily ingestion + pure `TechnicalIndicatorService` — the app's "Technical Momentum" group |
 | Redis | 4 | read cache + rate-limit buckets, keyed per market |
 | Optimization | 4, 8 | measured k6 loops against **two** daily spikes |
 | Kafka | 5 | replayable market + user event streams, keyed by `market:symbol` |
