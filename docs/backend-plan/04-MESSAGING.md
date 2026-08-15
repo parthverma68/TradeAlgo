@@ -50,7 +50,7 @@ answer is "measure your actual throughput before tuning this further."
 
 ```
 market.chain ──┬── group: persistence  → writes Postgres
-               └── group: signals      → computes verdicts
+               └── group: signals      → runs the scorers + ConfidenceEngine
 ```
 Two groups, each with its own offset, both seeing every message **from both markets**. Two
 *consumers in one group* would split the messages instead — a distinction worth deliberately
@@ -142,8 +142,8 @@ registry.enableStompBrokerRelay("/topic", "/queue")
 ```
 
 Both app instances now publish into one shared broker, so a client connected to instance A
-receives messages published by B — for `/topic/verdicts.IN.NIFTY` just as much as
-`/topic/verdicts.US.SPX`. That's the fix for the multi-instance WebSocket problem — and it's
+receives messages published by B — for `/topic/confidence.IN.NIFTY` just as much as
+`/topic/confidence.US.SPX`. That's the fix for the multi-instance WebSocket problem — and it's
 much more satisfying after you've hit the problem yourself.
 
 ---

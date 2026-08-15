@@ -16,6 +16,14 @@ second market onto a single-market schema is far more expensive than designing t
 > interpolated value), and remember confidence ≠ probability — it measures how much your
 > inputs agree, not what the market will do.
 
+**Product shape:** the user sees **one confidence/prediction score per symbol, plus a
+plain-language summary explaining why** — not a set of browsable indicator tabs. F&O
+positioning, technical/graph indicators, pre-market/post-market movement, and institutional
+flow are all **inputs to that one score**, each sourced from a real API/vendor feed (never
+scraped, never hand-maintained) and computed by its own small, pure, independently-tested
+scorer. See `01-WEEK-BY-WEEK.md` week 4 and `03-DATA-MODEL.md`'s `confidence_score` table for
+how the score and its reasoning are built.
+
 ---
 
 ## Start here
@@ -83,7 +91,7 @@ Everything on your list, mapped to where it does real work:
 | Kafka | 5 | replayable market + user event streams, keyed by `market:symbol` |
 | User events | 5 | app telemetry → analytics |
 | RabbitMQ | 6 | alert dispatch, crawl & embed jobs |
-| WebSocket / STOMP | 6, 8 | live verdict push per `{MARKET}.{SYMBOL}` topic |
+| WebSocket / STOMP | 6, 8 | live confidence-score push per `{MARKET}.{SYMBOL}` topic |
 | Web crawler | 7 | news ingestion for both markets (robots.txt, SSRF guards) |
 | Vector DB | 7 | pgvector + HNSW |
 | RAG | 7 | grounded, cited explanations |

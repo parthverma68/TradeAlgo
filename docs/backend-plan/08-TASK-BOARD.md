@@ -61,25 +61,47 @@ week, not staged one after the other — items below say so explicitly wherever 
 - [ ] COT weekly parser (US)
 - [ ] Third `@Scheduled` job: daily EOD candle ingestion into `price_candles`, both markets,
       after each market's close
+- [ ] Pre-market ingestion (India pre-open call auction 09:00-09:08 IST; US pre-market
+      04:00-09:30 ET) → `session_movement` (`session='PRE'`)
+- [ ] Post-market ingestion where the market actually has one (US after-hours 16:00-20:00 ET)
+      → `session_movement` (`session='POST'`); confirm the code path for India simply produces
+      no `POST` row rather than a fabricated one
 - [ ] Break test: dead India upstream → its breaker opens → recovers; **confirm US ingestion
       was unaffected the whole time**
 - [ ] Fix one deliberate race condition
 
-## Week 4 — Signal Engine, Redis, Optimization
+## Week 4 — Confidence Engine, Redis, Optimization
 
-- [ ] `SignalEngineService` — pure, no I/O, takes `(market, symbol)`-scoped input
+- [ ] `FnoScorer` — pure, no I/O, takes `(market, symbol)`-scoped option-chain input →
+      `fno_score` (PCR, Max Pain, IV, buildup)
 - [ ] Tests: Max Pain (hand-computed), bullish, bearish, neutral fixtures — **for both markets**
-- [ ] Persist verdicts to `market_sentiment`
 - [ ] `TechnicalIndicatorService` — pure, RSI(14) via Wilder's smoothing, SMA(50)/SMA(200) +
-      above/below flags, volume vs 30-day average — the "graph indicators"
+      above/below flags, volume vs 30-day average → `technical_score` — the "graph indicators"
 - [ ] Tests: hand-computed RSI(14) fixture, above/below-both-averages fixtures, and the
       `< 200 candles → null sma_200` case — **for both markets**
 - [ ] Persist technical snapshots to `technical_indicators`
+- [ ] `SessionMovementScorer` — pure, reads `session_movement` → `premarket_score`; returns
+      "no contribution" (not zero, not bearish) when a session has no row for that market
+- [ ] `FlowScorer` — pure, reads `institutional_flow` → `flow_score` (FII/DII net for `IN`,
+      latest COT positioning for `US`)
+- [ ] `ConfidenceEngine` — combines the four sub-scores into `overall` + `signal` +
+      `recommendation`, weighted (document the weights and why); **pure**, same discipline as
+      its inputs
+- [ ] Deterministic summary template — generates the reasoning text from the sub-scores and raw
+      figures, e.g. "BULLISH (74): strong OI buildup and RSI at 68, tempered by a flat
+      pre-market gap." No LLM in this path; it must be correct-by-construction from the numbers
+- [ ] Tests: given a fixed set of sub-scores, the summary names the actual top driver(s) — not
+      just any plausible-sounding sentence
+- [ ] Persist to `confidence_score` (`overall`, `signal`, `recommendation`, sub-scores, raw
+      figures, `summary`)
 - [ ] Redis cache-aside + TTLs, keys namespaced `{market}:{symbol}` (`technical:*` at a longer,
       hourly TTL — this data only changes once a day)
 - [ ] Scheduler writes through (refresh-ahead), per market
 - [ ] Cache stampede handling (pick and implement one)
-- [ ] All remaining GET endpoints, contract-shaped, accepting `market`
+- [ ] All remaining GET endpoints, contract-shaped, accepting `market` — including
+      `/stocks/{symbol}/confidence` returning `overall` + `signal` + `recommendation` +
+      `summary` as the primary payload (sub-scores travel too, as supporting detail, not as
+      separate screens)
 - [ ] k6 baseline → optimise → re-measure for an India symbol and a US symbol; **record p95
       before/after, per market**
 - [ ] Hikari pool sizing; batch inserts; N+1 hunt
@@ -110,7 +132,7 @@ week, not staged one after the other — items below say so explicitly wherever 
 - [ ] `POST /devices/register` · `DELETE /devices/{token}`
 - [ ] `POST /alerts/{id}/ack`
 - [ ] STOMP `/ws` + JWT `ChannelInterceptor` + `Principal`
-- [ ] Push to `/topic/verdicts.{MARKET}.{SYMBOL}` and `/user/queue/alerts`
+- [ ] Push to `/topic/confidence.{MARKET}.{SYMBOL}` and `/user/queue/alerts`
 - [ ] **Alert lands on a real phone in all 3 app states**, tested with an India alert and a US alert
 - [ ] **Mobile dashboard updates live**, watching a symbol from each market
 

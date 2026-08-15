@@ -185,21 +185,30 @@ the other.
 
 ---
 
-# WEEK 4 · Signal engine, Redis & first optimization pass
+# WEEK 4 · Confidence engine, Redis & first optimization pass
 
 **Concepts:** pure functions, Redis caching patterns (cache-aside, TTL, stampede), Spring Cache
 abstraction, HikariCP connection pooling, DB indexing, N+1 detection, pagination, JMeter/k6.
 
+### The shape of what you're building this week
+
+The user sees **one confidence/prediction score and a plain-language summary explaining it** —
+not a dashboard of separate indicator tabs. Everything below exists to produce that one number
+honestly: several small, independently-testable, **pure** scorers, each responsible for one
+category of API-sourced evidence, combined by an engine that also writes the reasoning. No
+scorer talks to the network or the DB — they take data already fetched, return a score plus
+the raw figures behind it, and are trivial to unit test because of it.
+
 ### Build
-- `SignalEngineService` — **pure**, no HTTP, no DB inside the math. Input: snapshot object
-  (already carries `market`). Output: verdict object. Formulas in the platform spec (PCR, Max
-  Pain, basis, buildup, IV score, volatility score, gap-up probability, bull/bear, confidence,
-  risk) — the formulas themselves don't change per market, but every input is scoped to one.
+- **`FnoScorer`** — pure, no HTTP, no DB inside the math. Input: option-chain/futures snapshot
+  (already carries `market`). Output: `fno_score` (0–100) plus the raw PCR, Max Pain distance,
+  IV-vs-average, and OI buildup it was computed from. Formulas in the platform spec (PCR, Max
+  Pain, basis, buildup, IV score) — identical per market, every input scoped to one.
 - JUnit tests: hand-computable Max Pain fixture **for each market**; obviously-bullish →
-  `BULLISH`; obviously bearish → `BEARISH`; balanced → `NEUTRAL`.
-- **`TechnicalIndicatorService` — the "graph indicators."** Also **pure**, same discipline as
-  `SignalEngineService`: input is the last ~200 `price_candles` rows for `(market, symbol)`,
-  output is a `TechnicalSnapshot`. Compute:
+  high `fno_score`; obviously bearish → low; balanced → mid-range.
+- **`TechnicalIndicatorService` — the "graph indicators."** Same pure discipline: input is the
+  last ~200 `price_candles` rows for `(market, symbol)`, output is `technical_score` plus the
+  raw RSI/SMA/volume figures. Compute:
   - **RSI(14)** — Wilder's smoothing, not a naive average; the difference matters for the
     fixture test below.
   - **SMA(50)** and **SMA(200)**, plus `above_sma_50` / `above_sma_200` booleans (the
@@ -211,16 +220,38 @@ abstraction, HikariCP connection pooling, DB indexing, N+1 detection, pagination
     average computed from 40 days of data is exactly the kind of fabricated number this whole
     plan tries to design against.
   - MACD and Bollinger Bands are a natural, self-contained addition once RSI/SMA are solid and
-    tested — same input, same pure-function shape — but they're not required for the app's
-    current "Technical Momentum" group, so treat them as a week-4 stretch, not a blocker.
+    tested — same input, same pure-function shape — but they're not required for `technical_score`
+    v1, so treat them as a week-4 stretch, not a blocker.
 - JUnit tests for `TechnicalIndicatorService`: a hand-computed RSI(14) fixture (there are
   published worked examples — use one, don't trust your own arithmetic on the first pass), a
   candle series that should sit clearly above both moving averages and one clearly below, and
   the `< 200 candles → null sma_200` case. **For each market** — the formulas are identical,
   but a fixture built only from India data can hide a bug that only shows up on US data with a
   different price scale (₹1000s vs $100s) or a different volume scale.
+- **`SessionMovementScorer`** — pure. Input: today's `session_movement` rows for
+  `(market, symbol)`. Output: `premarket_score`, from the pre-open/pre-market gap % (and the
+  post-market gap where that session exists — see `03-DATA-MODEL.md`). No row for a session
+  means **no contribution to the score**, not a zero or a bearish default — a market that
+  genuinely has no post-market session (India, today) must not be silently penalised for
+  "missing" data it was never going to have.
+- **`FlowScorer`** — pure. Input: latest `institutional_flow` row for `(market, symbol's
+  segment)`. Output: `flow_score`, from FII/DII net (India) or the latest COT positioning (US).
+- **`ConfidenceEngine`** — the composition step, also pure. Takes the four sub-scores, applies
+  documented weights (pick numbers, write down *why*, e.g. F&O and technical weighted heavier
+  than flow since they update far more often), and produces `overall`, `signal`
+  (`BULLISH`/`BEARISH`/`NEUTRAL`), and `recommendation` (`BUY`/`WATCH`/`AVOID`).
+- **The summary — "why this score."** A deterministic template, not an LLM call, run
+  immediately after `ConfidenceEngine`: identify the one or two sub-scores that pulled hardest
+  in the winning direction and the one that pulled against it, and state them by name with
+  their actual figures — *"BULLISH (74): strong OI buildup and RSI at 68, tempered by a flat
+  pre-market gap."* Because it's built directly from the same numbers stored alongside it, it
+  cannot say something the data doesn't support. This ships in week 4; a richer, RAG-grounded
+  rewrite of the same facts is a week-7 upgrade (`ai_explanation`), never a replacement source
+  of truth (see `05-AI-RAG-AGENTS.md`).
+- Persist everything — `overall`, `signal`, `recommendation`, the four sub-scores, the raw
+  figures, and `summary` — to `confidence_score` (see `03-DATA-MODEL.md`).
 - Redis cache-aside on read endpoints. Keys and TTLs, now market-scoped:
-  `verdict:{market}:{symbol}` 120s · `chain:{market}:{symbol}` 60s ·
+  `confidence:{market}:{symbol}` 120s · `chain:{market}:{symbol}` 60s ·
   `technical:{market}:{symbol}` 3600s (technical indicators only change once a day, so an
   hourly TTL is generous, not stale) · `global:board` 300s (global markets board is inherently
   cross-market, so it stays unkeyed by a single market).
@@ -230,8 +261,8 @@ abstraction, HikariCP connection pooling, DB indexing, N+1 detection, pagination
 - Handle **cache stampede**: when 500 users hit an expired key at once, for either market's
   most-watched symbol. Learn the options (lock/single-flight, jittered TTL, refresh-ahead) and
   pick one.
-- Load test with **k6**: measure p50/p95/p99 on `/market/preopen` before and after caching,
-  for both an India symbol and a US symbol.
+- Load test with **k6**: measure p50/p95/p99 on `/stocks/{symbol}/confidence` before and after
+  caching, for both an India symbol and a US symbol.
 
 ### Concept work
 This is your first real **optimization** week, so make it measured, not vibes:
@@ -244,12 +275,19 @@ Optimising without measuring first is the single most common junior mistake — 
 properly once and you'll never skip it again.
 
 ### Verify gate
-- [ ] Signal engine tests pass, including the hand-computed Max Pain for **both** markets
+- [ ] `FnoScorer` tests pass, including the hand-computed Max Pain for **both** markets
 - [ ] `TechnicalIndicatorService` tests pass, including the hand-computed RSI(14) and the
       `< 200 candles → null sma_200` case, for **both** markets
+- [ ] `SessionMovementScorer` returns "no contribution," not zero, when India has no post-market
+      row for a symbol
+- [ ] `ConfidenceEngine`'s weights are written down somewhere durable (a doc comment or this
+      file), not just live in code
+- [ ] The generated `summary` for a hand-built fixture names the actual top driver(s) — swap
+      which sub-score is highest and confirm the summary text changes to match
 - [ ] p95 latency documented before and after caching, for an India and a US symbol
 - [ ] Cache hit ratio observable, broken down by market
-- [ ] `/market/preopen` serves real computed verdicts from real ingested data for both markets
+- [ ] `/stocks/{symbol}/confidence` serves a real computed `overall` + `signal` +
+      `recommendation` + `summary` from real ingested data, for both markets
 - [ ] A stock/index with a genuinely golden-cross-like candle history returns
       `above_sma_50 = true, above_sma_200 = true` and the reverse for a clearly bearish one —
       checked by eye against the same symbol's chart, not just asserted in a unit test
@@ -273,8 +311,9 @@ that's a replay from an offset, which is exactly what a log gives you and a work
   one market+symbol land on one partition and stay ordered — and so an India-heavy day doesn't
   accidentally skew partition load if you ever key by symbol text alone and two tickers hash
   unevenly.
-- **Consumers**: a persistence consumer (writes to Postgres) and a signal consumer (computes
-  verdicts). Separate consumer groups — both see every event, from both markets.
+- **Consumers**: a persistence consumer (writes to Postgres) and a signal consumer (runs the
+  scorers and `ConfidenceEngine`). Separate consumer groups — both see every event, from both
+  markets.
 - **User events pipeline**: the mobile app's telemetry (`device_registered`, `alert_opened`,
   screen views) → `POST /events` → Kafka topic `user.events` → consumer → analytics table.
   This is your event-sourcing-flavoured learning ground.
@@ -323,8 +362,8 @@ DLQ if it keeps failing. Replaying it a week later would be wrong. That's a queu
   market's open — 09:10 IST or 09:25 ET).
 - **STOMP WebSocket** endpoint `/ws` (no SockJS — the RN client uses a raw WebSocket).
   JWT validated in a `ChannelInterceptor`, `Principal` set so `/user/queue/**` resolves.
-- Push verdicts to `/topic/verdicts.{MARKET}.{SYMBOL}` after each scheduler run, for whichever
-  market that run just computed.
+- Push the updated confidence score to `/topic/confidence.{MARKET}.{SYMBOL}` after each
+  scheduler run, for whichever market that run just computed.
 
 ### Verify gate
 - [ ] Alert fires end-to-end to a real phone, in all three app states (foreground/background/killed),
@@ -377,7 +416,7 @@ pgvector/Qdrant, hybrid search, RAG grounding, tool-calling agents, prompt injec
 
 ### 7d · Agent (Fri–weekend)
 - A **tool-calling loop**, not magic: the LLM is given tools (`getOptionChain`, `searchNews`,
-  `getVerdict`, `computeMaxPain`), decides which to call, you execute, feed results back, loop
+  `getConfidenceScore`, `computeMaxPain`), decides which to call, you execute, feed results back, loop
   until it answers. Every tool takes `(market, symbol)`, not `symbol` alone.
 - **Guardrails, non-optional:** max iterations (5), per-request token budget, timeout,
   tool allowlist, no tool that writes data or spends money.
@@ -463,7 +502,7 @@ STOMP broker relay, observability, JVM tuning, graceful shutdown, deployment.
 | Kafka | 5 | market data + user events, keyed by `market:symbol` |
 | User events | 5 | app telemetry pipeline |
 | RabbitMQ | 6 | alert dispatch, crawl/embed jobs |
-| WebSocket/STOMP | 6, 8 | live verdicts to phone, per `{MARKET}.{SYMBOL}` topic |
+| WebSocket/STOMP | 6, 8 | live confidence-score push to phone, per `{MARKET}.{SYMBOL}` topic |
 | Web crawler | 7 | news ingestion for both markets |
 | Vector DB | 7 | pgvector news chunks |
 | RAG | 7 | grounded AI explanation |
@@ -506,4 +545,4 @@ jurisdictions (SEBI for India, SEC/FINRA for the US). Two habits worth forming n
   stale source is an India broker feed or a US data vendor.
 - **Confidence ≠ probability.** Your confidence score measures how much your inputs agree. It
   is not the chance the market goes up, and the API/UI wording should never imply it is — for
-  either market's verdicts.
+  either market's scores.

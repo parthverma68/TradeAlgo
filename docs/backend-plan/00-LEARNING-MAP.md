@@ -42,7 +42,7 @@ Adding a second market isn't just "more data." It's a forcing function for good 
   circuit breakers** — real distributed-systems texture you don't get from one market, and
   the honest reason weeks 3 and 8 both call it out explicitly.
 - It's a **bulkhead exercise for free**: an outage in the US vendor must not degrade India
-  verdicts, and vice versa. That's Resilience4j's bulkhead pattern with a genuine reason to
+  confidence scores, and vice versa. That's Resilience4j's bulkhead pattern with a genuine reason to
   exist, not a contrived one.
 
 ---
@@ -61,7 +61,7 @@ Adding a second market isn't just "more data." It's a forcing function for good 
 | **Kafka** | Market snapshots are an ordered, replayable stream per market; you'll want to re-run the engine over history for either | Core, and the right tool |
 | **User events** | App telemetry → analytics; also your event-modelling sandbox | Useful, mildly stretched |
 | **RabbitMQ** | Alert dispatch and crawl jobs are *tasks* (do once, retry, DLQ) — genuinely not a log | Core, and the contrast with Kafka is the lesson |
-| **WebSocket / STOMP** | Live verdict push to the phone, one topic per `(market, symbol)` | Core |
+| **WebSocket / STOMP** | Live confidence-score push to the phone, one topic per `(market, symbol)` | Core |
 | **Web crawler** | News sentiment needs article text, from sources covering both markets | Core, with real legal/ethical constraints |
 | **Vector DB** | Semantic retrieval over news for grounded explanations | Core to the AI feature |
 | **RAG** | Stops the LLM inventing market claims — grounds them in retrieved sources | Core, and a safety requirement here |

@@ -68,8 +68,8 @@ virtual threads — create one per task.
 - Timeouts on everything: connect, read, and total. Defaults are often infinite.
 - Prefer immutability over locks. `ConcurrentHashMap` when you must share.
 - `CompletableFuture.allOf(...)` for the fan-out; handle partial failure explicitly — one dead
-  vendor should degrade **that market's** verdict, not fail the whole cycle and not touch the
-  other market at all.
+  vendor should degrade **that market's** confidence score, not fail the whole cycle and not
+  touch the other market at all.
 
 ### Resilience4j
 
@@ -94,7 +94,7 @@ resource (a shared thread pool is the usual culprit) and fix it.
 
 | Key | TTL | Written by |
 |---|---|---|
-| `verdict:{market}:{symbol}` | 120s | scheduler |
+| `confidence:{market}:{symbol}` | 120s | scheduler |
 | `chain:{market}:{symbol}` | 60s | scheduler |
 | `technical:{market}:{symbol}` | 3600s | scheduler (daily EOD job — an hour-long TTL is still fresher than the underlying data) |
 | `global:board` | 300s | scheduler (cross-market, no `market` in the key) |
@@ -246,5 +246,5 @@ field, not just embedded in a string), propagate into Kafka headers and log line
 grep traces a run from ingestion through the engine to the push — and a filter on `market`
 separates the two markets' runs cleanly even when both schedulers happen to fire close
 together. This is the single highest-value observability feature for a pipeline like this —
-and the thing you'll miss most when a verdict looks wrong and you need to know instantly
-whether it was the India run or the US run that produced it.
+and the thing you'll miss most when a confidence score looks wrong and you need to know
+instantly whether it was the India run or the US run that produced it.

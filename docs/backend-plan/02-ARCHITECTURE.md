@@ -4,10 +4,17 @@ The architecture **changes over the 8 weeks**. That progression is deliberate: y
 each piece was added, instead of inheriting a diagram you don't understand.
 
 `market` (`IN` | `US`) is a dimension present from week 1 onward — not a service split. One
-schema, one Kafka cluster, one Redis, one signal engine; every table, key, topic and topic
+schema, one Kafka cluster, one Redis, one confidence engine; every table, key, topic and topic
 subscription carries `(market, symbol)` together. The only place the two markets genuinely
 fork is the ingestion adapter layer, because that's the only layer touching a
 market-specific external API.
+
+The product surface is deliberately narrow: **one confidence/prediction score plus a summary
+explaining it**, per `(market, symbol)`. Everything in `signals/` below exists to produce that
+one number honestly — several small pure scorers (F&O, technical, pre/post-market movement,
+institutional flow), each testable in isolation, composed by one engine that also writes the
+reasoning. None of the sub-scores are their own screen or endpoint; they're the evidence behind
+the one score.
 
 ---
 
@@ -33,7 +40,8 @@ com.premarketiq
 │   ├── MarketDataAdapter.java                              interface
 │   ├── in/         InMarketDataAdapter, India DTO mapping
 │   └── us/         UsMarketDataAdapter, US DTO mapping
-├── signals/        SignalEngineService + TechnicalIndicatorService (both pure), rules  (market-agnostic)
+├── signals/        FnoScorer, TechnicalIndicatorService, SessionMovementScorer,
+│                   FlowScorer, ConfidenceEngine (all pure)              (market-agnostic)
 ├── news/           crawler, rag
 ├── alerts/         rules, dispatch
 └── common/         config, errors, security
@@ -49,8 +57,10 @@ regardless of which market produced it.
 A third scheduled job (not drawn above to keep the diagram readable) writes daily OHLCV bars
 into `price_candles` once per symbol after each market's close — a much slower cadence than the
 chain/futures polling. `TechnicalIndicatorService` reads that table to produce the "graph
-indicators" (RSI, moving averages, volume surge); it sits in `signals/` next to
-`SignalEngineService`, same pure-function rule, same market-agnostic contract.
+indicators" (RSI, moving averages, volume surge); it sits in `signals/` next to the other
+scorers, same pure-function rule, same market-agnostic contract. `ConfidenceEngine` is the one
+piece in that package that isn't itself a scorer — it composes the others' outputs into
+`overall` + `signal` + `recommendation` and writes the summary.
 
 ---
 
@@ -64,11 +74,11 @@ indicators" (RSI, moving averages, volume surge); it sits in `signals/` next to
  │ Ingestion├──────────────► KAFKA ──┬──► persistence consumer ──► Postgres
  └──────────┘                        └──► signal consumer ──┐
                                                             ▼
- mobile app ──► POST /events ──► KAFKA user.events      SignalEngine
+ mobile app ──► POST /events ──► KAFKA user.events    ConfidenceEngine
                                       │                     │
                                       ▼                     ▼
-                                analytics consumer     verdict → Redis
-                                                     (verdict:{market}:{symbol})
+                                analytics consumer   score+summary → Redis
+                                                   (confidence:{market}:{symbol})
                                             ┌───────────────┼──────────────┐
                                             ▼               ▼              ▼
                                     STOMP /topic       alert rules    Postgres

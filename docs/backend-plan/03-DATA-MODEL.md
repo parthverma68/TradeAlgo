@@ -180,25 +180,63 @@ CREATE TABLE watchlists (
 
 ## Weeks 4–6 · Signals & alerts
 
+**Product decision that shapes this whole section:** the user-facing output is **one confidence/
+prediction score plus a plain-language summary explaining that score** — not a set of
+browsable indicator tabs. F&O positioning, technical/graph indicators, pre-market/post-market
+movement, and institutional flow are **inputs to that one score**, each computed by its own
+pure, testable scorer, then combined. The sub-scores still get persisted (you need them to
+*write* the summary and to debug/backtest the engine), but they are supporting evidence for
+the one number, not independent features. Every input is sourced from a real API/vendor feed —
+never scraped or hand-maintained — which is also why fundamentals-style signals (earnings
+estimates, analyst ratings, promoter/insider holdings) are **out of scope**: there's no clean,
+free API for them, and a `null`-backed guess is worse than not having the input at all.
+
 ```sql
-CREATE TABLE market_sentiment (
-  id BIGSERIAL PRIMARY KEY,
-  market TEXT NOT NULL CHECK (market IN ('IN','US')),
-  symbol TEXT NOT NULL,
-  signal TEXT NOT NULL CHECK (signal IN ('BULLISH','BEARISH','NEUTRAL')),
-  confidence INT NOT NULL CHECK (confidence BETWEEN 0 AND 100),
-  bull_score INT, bear_score INT, risk_score INT,
-  pcr NUMERIC(8,3), iv_score NUMERIC(8,3), vol_score INT, gap_up_prob INT,
-  max_pain NUMERIC(14,4), basis NUMERIC(14,4),
-  range_low NUMERIC(14,4), range_high NUMERIC(14,4),
-  ai_explanation TEXT,
+-- The one number the user sees, plus the sub-scores and reasoning behind it.
+CREATE TABLE confidence_score (
+  id           BIGSERIAL PRIMARY KEY,
+  market       TEXT NOT NULL CHECK (market IN ('IN','US')),
+  symbol       TEXT NOT NULL,
+
+  -- the one number + its direction
+  overall      INT NOT NULL CHECK (overall BETWEEN 0 AND 100),
+  signal       TEXT NOT NULL CHECK (signal IN ('BULLISH','BEARISH','NEUTRAL')),
+  recommendation TEXT CHECK (recommendation IN ('BUY','WATCH','AVOID')),
+
+  -- sub-scores: inputs, not separate user-facing features. Nullable — a scorer with
+  -- no data for this symbol/session contributes nothing, not a fabricated midpoint.
+  fno_score       INT CHECK (fno_score BETWEEN 0 AND 100),
+  technical_score INT CHECK (technical_score BETWEEN 0 AND 100),
+  premarket_score INT CHECK (premarket_score BETWEEN 0 AND 100),
+  flow_score      INT CHECK (flow_score BETWEEN 0 AND 100),  -- institutional_flow (FII/DII, COT)
+
+  -- raw figures the summary is generated from — keep these so "why this score" is
+  -- checkable against real numbers, not just the LLM/template's word for it
+  pcr NUMERIC(8,3), max_pain NUMERIC(14,4), basis NUMERIC(14,4),
+  rsi_14 NUMERIC(6,2), gap_pct NUMERIC(8,3),
+
+  -- the reasoning, at the bottom of the card
+  summary        TEXT NOT NULL,  -- deterministic, templated from the sub-scores (week 4)
+  ai_explanation TEXT,           -- optional richer, RAG-grounded rewrite (week 7) — same facts, better prose
+
   computed_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX idx_sentiment_market_symbol_time ON market_sentiment (market, symbol, computed_at DESC);
+CREATE INDEX idx_confidence_market_symbol_time ON confidence_score (market, symbol, computed_at DESC);
+```
 
--- The "Technical Momentum" indicator group — the chart/graph indicators. Computed
--- from price_candles by a pure TechnicalIndicatorService (same "pure function"
--- discipline as SignalEngineService), on the same daily cadence as candle ingestion.
+> **Why `summary` and `ai_explanation` are two columns, not one:** `summary` is produced by a
+> deterministic template in week 4 — "BULLISH (74): strong OI buildup and RSI at 68, tempered
+> by a flat pre-market gap" — built directly from the sub-scores above, with no LLM involved.
+> It ships first, it's always correct-by-construction (it can only say what the numbers say),
+> and it's what the score's reasoning falls back to if the AI explanation is ever missing,
+> stale, or fails its numeric-verification check (see `05-AI-RAG-AGENTS.md`). `ai_explanation`
+> is a week-7 upgrade — same underlying facts, phrased more naturally and grounded with cited
+> news — never a replacement source of truth for the score itself.
+
+```sql
+-- The chart/graph indicators — one input to the score above, not a separate screen.
+-- Computed from price_candles by a pure TechnicalIndicatorService (same "pure function"
+-- discipline as every other scorer here), on the same daily cadence as candle ingestion.
 CREATE TABLE technical_indicators (
   id                   BIGSERIAL PRIMARY KEY,
   market               TEXT NOT NULL CHECK (market IN ('IN','US')),
@@ -214,6 +252,27 @@ CREATE TABLE technical_indicators (
 );
 CREATE INDEX idx_technical_market_symbol_time ON technical_indicators (market, symbol, computed_at DESC);
 
+-- Pre-market / post-market movement — another input to the score, sourced live from
+-- the same broker/vendor APIs as everything else. The two sessions are NOT symmetric
+-- across markets: the US has genuine, liquid pre-market (04:00-09:30 ET) and
+-- after-hours (16:00-20:00 ET) quotes; India's NSE has a pre-open call auction
+-- (09:00-09:08 IST) but no broad live post-market session for equities. A market/
+-- session combination with nothing to report is simply absent from this table —
+-- the scorer must treat "no row" as "no contribution," not as bearish or zero.
+CREATE TABLE session_movement (
+  id              BIGSERIAL PRIMARY KEY,
+  market          TEXT NOT NULL CHECK (market IN ('IN','US')),
+  symbol          TEXT NOT NULL,
+  session         TEXT NOT NULL CHECK (session IN ('PRE','POST')),
+  reference_close NUMERIC(14,4) NOT NULL,  -- the regular-session close being compared against
+  session_price   NUMERIC(14,4) NOT NULL,  -- latest pre/post price
+  gap_pct         NUMERIC(8,3) NOT NULL,   -- (session_price / reference_close - 1) * 100
+  session_volume  BIGINT,
+  captured_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (market, symbol, session, captured_at)
+);
+CREATE INDEX idx_session_movement_lookup ON session_movement (market, symbol, session, captured_at DESC);
+
 CREATE TABLE alerts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -225,7 +284,7 @@ CREATE TABLE alerts (
 CREATE INDEX idx_alerts_user ON alerts (user_id, created_at DESC);
 ```
 
-**Backtesting your own signals:** `market_sentiment` stores what you predicted and when. Join
+**Backtesting your own signals:** `confidence_score` stores what you predicted and when. Join
 it against the next session's actual open — India's next 09:15 IST print, or the US's next
 09:30 ET print — and you can honestly measure whether the engine has any edge, per market. Do
 this before ever claiming it does. Don't pool both markets' hit rates into one number; a
@@ -338,5 +397,5 @@ rows per month.
   against a US one.
 - Consider partitioning by `(market, month)` once a table passes ~50M rows — partitioning by
   market first is a natural fit here, since almost every query already filters on it.
-- Never delete `market_sentiment` — it's your only honest record of what the engine predicted,
+- Never delete `confidence_score` — it's your only honest record of what the engine predicted,
   for either market.
